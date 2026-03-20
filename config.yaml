@@ -1,41 +1,38 @@
 primary_themes:
-  - Fork
-  - Pin
-  - Skewer
-  - Back rank
-  - Mating net
-  - Discovered attack
-  - Zwischenzug
-  - Piece activity
-  - Pawn structure
-  - King safety
-  - Prophylaxis
-  - Calculation error
-  - Endgame technique
-  - Opening prep gap
-
+- Fork
+- Pin
+- Skewer
+- Back rank
+- Mating net
+- Discovered attack
+- Zwischenzug
+- Piece activity
+- Pawn structure
+- King safety
+- Prophylaxis
+- Calculation error
+- Endgame technique
+- Opening prep gap
+- Hanging Pawn
 secondary_themes:
-  - None
-  - Time pressure
-  - Opening prep gap
-  - Endgame technique
-  - King safety
-  - Opponent surprise
-
+- None
+- Time pressure
+- Opening prep gap
+- Endgame technique
+- King safety
+- Opponent surprise
 training_prescriptions:
-  - Tactics puzzles (general)
-  - Fork puzzles
-  - Pin and skewer puzzles
-  - Back rank puzzles
-  - Mating net puzzles
-  - Threat scan practice
-  - Positional study
-  - Calculation training
-  - Play slower time controls
-  - Endgame study
-  - Opening review
-
-# Mapping from our theme names to Lichess puzzle API angle slugs.
+- Tactics puzzles (general)
+- Fork puzzles
+- Pin and skewer puzzles
+- Back rank puzzles
+- Mating net puzzles
+- Threat scan practice
+- Positional study
+- Calculation training
+- Play slower time controls
+- Endgame study
+- Opening review
 lichess_theme_map:
   Fork: fork
   Pin: pin
@@ -48,9 +45,5 @@ lichess_theme_map:
   King safety: kingsideAttack
   Endgame technique: endgame
   Calculation error: hangingPiece
-
-# Eval swing threshold in centipawns for flagging missed wins
 missed_win_threshold: 150
-
-# Minimum eval (in centipawns, from your side) to consider a position "winning"
 winning_threshold: 150

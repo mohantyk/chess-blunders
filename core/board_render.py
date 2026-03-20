@@ -8,10 +8,11 @@ from PIL import Image
 import customtkinter as ctk
 
 
-def fen_to_ctk_image(fen: str, size: int = 280, move: chess.Move = None) -> ctk.CTkImage:
+def fen_to_ctk_image(fen: str, size: int = 380, move: chess.Move = None) -> ctk.CTkImage:
     """
     Render the position described by `fen` to a CTkImage.
-    If `move` is provided, highlight the from-square (green) and to-square (red).
+    If `move` is provided, highlight the from-square (green) and to-square (red),
+    and draw an arrow from origin to destination.
     """
     board = chess.Board(fen)
 
@@ -20,8 +21,9 @@ def fen_to_ctk_image(fen: str, size: int = 280, move: chess.Move = None) -> ctk.
     if move:
         fill[move.from_square] = "#aaffaa"  # green tint
         fill[move.to_square] = "#ffaaaa"    # red tint
+        arrows = [chess.svg.Arrow(move.from_square, move.to_square, color="#cc0000")]
 
-    svg_str = chess.svg.board(board, size=size, fill=fill)
+    svg_str = chess.svg.board(board, size=size, fill=fill, arrows=arrows)
     png_bytes = cairosvg.svg2png(bytestring=svg_str.encode())
     pil_img = Image.open(io.BytesIO(png_bytes))
     return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(size, size))

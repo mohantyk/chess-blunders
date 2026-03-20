@@ -46,12 +46,10 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
     """
     game = chess.pgn.read_game(io.StringIO(pgn_text))
     if game is None:
-        return None, None, []
+        return None, []
 
     headers = game.headers
     flagged = []
-
-    board = game.board()
     prev_eval = None  # eval before current move (from user's perspective)
 
     for node in game.mainline():
@@ -70,7 +68,6 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
         nags = node.nags
         is_blunder = bool(nags & BLUNDER_NAGS)
         is_mistake = bool(nags & MISTAKE_NAGS)
-        has_comment = bool(clean_comment)
 
         # Eval swing / missed win detection
         cur_eval_raw = _eval_from_comment(comment)
@@ -90,17 +87,15 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
         if side != user_color:
             continue
 
-        if not (is_blunder or is_mistake or has_comment or missed_win):
+        if not (is_blunder or is_mistake or missed_win):
             continue
 
         if is_blunder:
             flag_type = "blunder"
         elif is_mistake:
             flag_type = "mistake"
-        elif missed_win:
-            flag_type = "missed_win"
         else:
-            flag_type = "blunder"  # has comment but no NAG — treat as notable
+            flag_type = "missed_win"
 
         flagged.append({
             "move_number": move_number,
@@ -113,9 +108,7 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
             "move_obj": move,  # chess.Move, used for highlight squares
         })
 
-        board.push(move)
-
-    return headers, board, flagged
+    return headers, flagged
 
 
 def get_game_metadata(headers):

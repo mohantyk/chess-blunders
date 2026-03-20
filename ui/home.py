@@ -9,7 +9,7 @@ from core.db import insert_game
 class HomeScreen(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
-        self._user_color = ctk.StringVar(value="white")
+        self._user_color = "white"
         self._build_ui()
 
     def _build_ui(self):
@@ -30,13 +30,13 @@ class HomeScreen(ctk.CTkFrame):
         color_frame = ctk.CTkFrame(self, fg_color="transparent")
         color_frame.grid(row=3, column=0, pady=14)
         ctk.CTkLabel(color_frame, text="Which colour did you play?").pack(side="left", padx=(0, 12))
-        ctk.CTkSegmentedButton(
-            color_frame,
-            values=["White", "Black"],
-            variable=self._user_color,
-            command=lambda v: self._user_color.set(v.lower()),
-        ).pack(side="left")
-        self._user_color.set("White")
+        self._btn_white = ctk.CTkButton(color_frame, text="White", width=90,
+                                        command=lambda: self._set_color("white"))
+        self._btn_white.pack(side="left", padx=(0, 6))
+        self._btn_black = ctk.CTkButton(color_frame, text="Black", width=90,
+                                        command=lambda: self._set_color("black"))
+        self._btn_black.pack(side="left")
+        self._set_color("white")
 
         # Analyse button
         ctk.CTkButton(self, text="Analyse →", width=180, height=42,
@@ -52,23 +52,30 @@ class HomeScreen(ctk.CTkFrame):
                       hover_color=("gray75", "gray30"),
                       command=self._open_settings).grid(row=6, column=0, pady=(0, 16))
 
+    def _set_color(self, color: str):
+        self._user_color = color
+        active = ("gray50", "gray40")
+        inactive = ("gray75", "gray25")
+        self._btn_white.configure(fg_color=active if color == "white" else inactive)
+        self._btn_black.configure(fg_color=active if color == "black" else inactive)
+
     def _on_analyse(self):
         pgn_text = self._pgn_box.get("1.0", "end").strip()
         if not pgn_text:
             self._status.configure(text="Please paste a PGN first.", text_color="#e07070")
             return
 
-        color = self._user_color.get().lower()
+        color = self._user_color
         cfg = load_config()
 
-        headers, board, flagged = parse_pgn(
+        headers, flagged = parse_pgn(
             pgn_text,
             user_color=color,
             missed_win_threshold=cfg.get("missed_win_threshold", 150),
             winning_threshold=cfg.get("winning_threshold", 150),
         )
 
-        if headers is None:
+        if headers is None or flagged is None:
             self._status.configure(text="Could not parse PGN — check the format.", text_color="#e07070")
             return
 

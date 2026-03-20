@@ -50,7 +50,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         self.rowconfigure(0, weight=1)
 
         # ---- Left panel ----
-        self._left = ctk.CTkFrame(self, width=320, corner_radius=0)
+        self._left = ctk.CTkFrame(self, width=420, corner_radius=0)
         self._left.grid(row=0, column=0, sticky="nsew", padx=(16, 8), pady=16)
         self._left.columnconfigure(0, weight=1)
 
