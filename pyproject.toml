@@ -1,0 +1,15 @@
+[project]
+name = "chess-analysis"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.9"
+dependencies = [
+    "cairosvg>=2.8.2",
+    "customtkinter>=5.2.2",
+    "openai>=2.29.0",
+    "pillow>=11.3.0",
+    "python-chess>=1.999",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+    "requests>=2.32.5",
+]
