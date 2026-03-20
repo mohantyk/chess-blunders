@@ -12,7 +12,7 @@ from core.db import get_connection
 
 STEP_LABELS = {1: "Step 1\nMissed threat", 2: "Step 2\nMissed tactic",
                3: "Step 3\nWrong plan", 4: "Step 4\nNo blunder check"}
-LAYER_LABELS = {"didnt_see": "Didn't see it", "got_it_wrong": "Got it wrong"}
+LAYER_LABELS = {"didnt_see": "Not seen", "got_it_wrong": "Seen"}
 
 DARK_BG = "#1e1e1e"
 CHART_BG = "#2b2b2b"
