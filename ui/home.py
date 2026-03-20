@@ -47,10 +47,15 @@ class HomeScreen(ctk.CTkFrame):
         self._status = ctk.CTkLabel(self, text="", text_color="gray", font=ctk.CTkFont(size=13))
         self._status.grid(row=5, column=0, pady=(0, 24))
 
-        # Settings link
-        ctk.CTkButton(self, text="⚙ Settings", width=100, fg_color="transparent",
+        # Bottom nav
+        nav = ctk.CTkFrame(self, fg_color="transparent")
+        nav.grid(row=6, column=0, pady=(0, 16))
+        ctk.CTkButton(nav, text="📊 Patterns", width=110, fg_color="transparent",
                       hover_color=("gray75", "gray30"),
-                      command=self._open_settings).grid(row=6, column=0, pady=(0, 16))
+                      command=self._open_patterns).pack(side="left", padx=8)
+        ctk.CTkButton(nav, text="⚙ Settings", width=110, fg_color="transparent",
+                      hover_color=("gray75", "gray30"),
+                      command=self._open_settings).pack(side="left", padx=8)
 
     def _set_color(self, color: str):
         self._user_color = color
@@ -105,6 +110,12 @@ class HomeScreen(ctk.CTkFrame):
             widget.destroy()
         AnalyzeScreen(self.master, game_id=game_id, flagged=flagged,
                       user_color=user_color).pack(fill="both", expand=True)
+
+    def _open_patterns(self):
+        from ui.patterns import PatternsScreen
+        for widget in self.master.winfo_children():
+            widget.destroy()
+        PatternsScreen(self.master, on_back=self._restore_home).pack(fill="both", expand=True)
 
     def _open_settings(self):
         from ui.settings import SettingsScreen
