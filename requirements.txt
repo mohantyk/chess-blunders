@@ -6,3 +6,4 @@ PyYAML==6.0.3
 python-dotenv==1.2.1
 requests==2.32.5
 openai==2.29.0
+matplotlib==3.10.8
