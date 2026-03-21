@@ -90,7 +90,87 @@ python main.py
 
 ---
 
-## Usage
+## Getting started
+
+This section walks a new user through a full session from first launch to reviewing patterns.
+
+### Step 1 — Export a game from Lichess
+
+Open the game you want to review on Lichess. Before exporting:
+
+- Make sure the game has annotations. Either Lichess added "?" / "??" symbols automatically (via computer analysis), or you added comments yourself.
+- Click **Share & export → Export PGN**, and tick **Include annotations**.
+- Copy the full PGN text to your clipboard.
+
+> The app flags moves based on the "?" (mistake) and "??" (blunder) symbols in the PGN, plus any move comments. Games without these will produce no flagged moves.
+
+---
+
+### Step 2 — Import the PGN
+
+1. Launch the app: `python main.py`
+2. Paste your PGN into the large text area on the home screen.
+3. Click **White** or **Black** to indicate which side you played.
+4. Click **Analyse →**.
+
+The app parses the PGN, extracts your flagged moves, and launches the review wizard.
+
+---
+
+### Step 3 — Work through the review wizard
+
+For each flagged move you will see:
+
+- The **board position** at the moment of the mistake, with the move number, side, and flag type shown above it.
+- A link to **Open in Lichess ↗** if you want to explore the position in the engine.
+- The **original annotation or comment** from the PGN.
+
+Fill in the eight fields on the right:
+
+| # | Field | What to enter |
+|---|-------|---------------|
+| 1 | **Thinking step** | Which step in your calculation process broke down — e.g. candidate generation, evaluation, blunder-check |
+| 2 | **Did you see it?** | Whether you missed the idea entirely, or saw it but reasoned incorrectly |
+| 3 | **Diagnosis** | Auto-filled once you complete steps 1 and 2 |
+| 4 | **Primary theme** | The main tactical or positional theme (e.g. pin, outpost, king safety) |
+| 5 | **Secondary theme** | An optional second theme |
+| 6 | **One-sentence fix** | What you would do differently next time |
+| 7 | **Training prescription** | The type of study that would address this gap (e.g. tactics puzzles, endgame drills) |
+| 8 | **Notes** | Any freeform observations (optional) |
+
+Click **Save → next** to log the blunder and move to the next one, or **Skip** to skip without saving.
+
+After saving, the app automatically fetches relevant Lichess puzzles and (if configured) an LLM recommendation for targeted training.
+
+---
+
+### Step 4 — Review your patterns
+
+Once you have logged several games, click **📊 Patterns** on the home screen to open the patterns dashboard.
+
+The dashboard shows:
+
+- **Thinking step breakdown** — which step fails most often
+- **Theme frequency** — your most common mistake themes
+- **Move heatmap** — which squares and move numbers you blunder on most
+- **Training prescriptions** — what your logged entries suggest you should study
+- **Monthly trend** — how your blunder rate is changing over time
+
+---
+
+### Step 5 — Adjust settings
+
+Click **⚙ Settings** on the home screen to:
+
+- Edit the lists of primary and secondary themes shown in the wizard dropdowns
+- Update your LLM endpoint, model, and API key
+- Change the app appearance theme
+
+Changes are saved to `config.yaml` immediately.
+
+---
+
+## Usage summary
 
 1. Export a game from Lichess with annotations (use the "?" and "??" symbols, or add comments)
 2. Paste the PGN into the text area on the home screen
