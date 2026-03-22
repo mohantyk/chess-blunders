@@ -422,7 +422,10 @@ class AnalyzeScreen(ctk.CTkFrame):
             result_text += "Lichess puzzles:\n" + "\n".join(puzzle_text_lines) + "\n\n"
         result_text += "Recommendation:\n" + (rec or "Recommendation unavailable.")
 
-        self.after(0, lambda: self._results_label.configure(text=result_text))
+        def _update_label():
+            if self._results_label.winfo_exists():
+                self._results_label.configure(text=result_text)
+        self.after(0, _update_label)
 
     # ------------------------------------------------------------------ done
 
