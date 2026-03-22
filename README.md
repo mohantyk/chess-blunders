@@ -2,6 +2,8 @@
 
 A desktop app for logging, classifying, and analysing chess blunders and mistakes, with the goal of identifying long-term patterns and generating targeted training recommendations.
 
+Based on: [The 4 Questions Strong Players Ask on Every Move That You Probably Skip](https://lichess.org/@/MattyDPerrine/blog/the-4-questions-strong-players-ask-on-every-move-that-you-probably-skip/WaE0weYc)
+
 ---
 
 ## Requirements
