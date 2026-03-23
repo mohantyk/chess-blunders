@@ -6,8 +6,9 @@ import chess
 import chess.pgn
 
 
-BLUNDER_NAGS = {2}   # $2 = blunder (??)
-MISTAKE_NAGS = {4}   # $4 = mistake (?)
+BLUNDER_NAGS = {2}    # $2 = blunder (??)
+MISTAKE_NAGS = {4}    # $4 = mistake (?)
+MISSED_WIN_NAGS = {9}  # $9 = missed win (chess.com annotation)
 
 
 def _lichess_url(fen: str) -> str:
@@ -68,10 +69,11 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
         nags = node.nags
         is_blunder = bool(nags & BLUNDER_NAGS)
         is_mistake = bool(nags & MISTAKE_NAGS)
+        is_nag_missed_win = bool(nags & MISSED_WIN_NAGS)
 
         # Eval swing / missed win detection
         cur_eval_raw = _eval_from_comment(comment)
-        missed_win = False
+        missed_win = is_nag_missed_win
         if cur_eval_raw is not None and prev_eval is not None and side == user_color:
             # Convert evals to user's perspective
             user_prev = prev_eval if user_color == "white" else -prev_eval
