@@ -10,6 +10,13 @@ if sys.platform == "darwin" and os.path.isdir(homebrew_lib):
     if homebrew_lib not in existing:
         os.environ["DYLD_LIBRARY_PATH"] = f"{homebrew_lib}:{existing}" if existing else homebrew_lib
 
+# uv's standalone Python keeps Tcl/Tk next to the base interpreter, which a
+# venv doesn't always find ("Can't find a usable init.tcl"). Point Tk at it.
+for _var, _dir in (("TCL_LIBRARY", "tcl8.6"), ("TK_LIBRARY", "tk8.6")):
+    _path = os.path.join(sys.base_prefix, "lib", _dir)
+    if not os.environ.get(_var) and os.path.isdir(_path):
+        os.environ[_var] = _path
+
 from dotenv import load_dotenv
 load_dotenv()
 

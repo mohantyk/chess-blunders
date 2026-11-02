@@ -1,0 +1,42 @@
+[Event "rated rapid game"]
+[Site "https://lichess.org/IuylTqNj"]
+[Date "2026.10.19"]
+[Round "-"]
+[White "i_will_analyze_games"]
+[Black "cicuska"]
+[Result "0-1"]
+[TimeControl "900+10"]
+[Termination "Normal"]
+[GameId "IuylTqNj"]
+[Variant "Standard"]
+[ECO "D08"]
+[Opening "Queen's Gambit Declined: Albin Countergambit, Normal Line"]
+[StudyName "Played Games"]
+[ChapterName "i_will_analyze_games - cicuska"]
+[ChapterURL "https://lichess.org/study/YYeDmlVd/zChpvsut"]
+[Annotator "https://lichess.org/@/i_will_analyze_games"]
+
+1. d4 { [%clk 0:15:00] } 1... d5 { [%clk 0:15:00] } 2. c4 { [%clk 0:15:08] } 2... e5 { Albin Countergambit } { [%clk 0:14:48] } 3. dxe5 { [%clk 0:13:59] } 3... d4 { I don't have a white repertoire against it } { [%clk 0:14:46] } 4. Nf3 { [%clk 0:14:03] } 4... Nc6 { [%clk 0:14:53] } 5. e4 { This move by Spassky is played on the 4th move, not 5th if I rem correctly. } { [%clk 0:14:02] } (5. a3 { This is my reportoire move from Chessable. }) 5... Bg4!? { I could not figure out a good solution after this. } { [%cal Rc6e5] [%clk 0:14:55] } 6. Bf4 { The only way to defend that pawn } { [%clk 0:13:57] } 6... Bb4+ { [%clk 0:14:58] } 7. Nbd2 { [%clk 0:14:01] } 7... Nge7 { [%clk 0:15:00] } (7... Bxf3 8. gxf3 $15 { [%cal Gf1h3,Gh1g1] }) 8. Be2? { This is just asking for D3 to come. } { [%clk 0:13:52] } (8. a3 Bxd2+ 9. Qxd2 Bxf3 10. gxf3 $15) (8. Bd3 Bxf3 9. gxf3 $15 (9. Qxf3 Bxd2+ 10. Kxd2 Ng6 11. Bg3 Ngxe5 12. Bxe5 Nxe5 13. Qg3 Qf6 $15 (13... Nxd3 14. Qxg7 Rf8 15. Kxd3))) 8... d3 { [%clk 0:15:08] } 9. Bf1 { [%clk 0:13:36] } 9... Ng6 { [%clk 0:15:15] } 10. Bg3 { [%clk 0:13:35] } 10... Ngxe5 { [%clk 0:15:23] } 11. Bxe5 { [%clk 0:13:38] } 11... Nxe5 $17 { [%cal Re5f3,Rg4f3] [%clk 0:15:28] } 12. Qb3 { [%clk 0:13:43] } (12. Qa4+!? Nc6 13. Ne5 Bxd2+ 14. Kxd2 Bd7 15. Bxd3 (15. Nxd7 Qxd7 16. Bxd3)) 12... Nxf3+ { [%clk 0:15:27] } 13. gxf3 { [%clk 0:13:48] } 13... Bxd2+ { [%clk 0:15:35] } 14. Kxd2 { [%clk 0:13:56] } 14... Bxf3 { [%clk 0:15:44] } 15. Rg1 { [%clk 0:14:04] } 15... g6 { [%clk 0:15:17] } 16. Rg3 { [%clk 0:14:12] } 16... Bxe4 { [%clk 0:15:22] } 17. Bxd3 { [%clk 0:14:14] } 17... Bxd3 { [%clk 0:15:20] } 18. Rxd3 { [%clk 0:14:21] } 18... Qg5+ { [%clk 0:15:28] } 19. Re3+ { [%clk 0:14:26] } 19... Kf8 { [%clk 0:15:17] } 20. Qxb7 { [%clk 0:14:13] } 20... Qd8+ { [%clk 0:15:25] } 21. Rd3 { [%clk 0:14:08] } 21... Qc8 { [%clk 0:15:30] } 22. Qb4+ { [%clk 0:13:52] } 22... Kg8 { [%clk 0:15:37] } 23. Rd1 { [%clk 0:13:39] } 23... Kg7 { [%clk 0:15:43] } 24. Qc3+ { [%clk 0:13:45] } 24... f6 { [%clk 0:15:50] } 25. Kc2 { [%clk 0:13:53] } 25... Qf5 { [%clk 0:15:50] } 26. Kc1 { [%clk 0:13:50] } 26... Qxf2 { [%clk 0:15:49] } 27. Rf3 { [%clk 0:13:46] } 27... Qxh2 { [%clk 0:15:54] } 28. Qxf6+ { [%clk 0:13:44] } 28... Kh6 { [%clk 0:16:02] } 29. Rff1?? { [%clk 0:13:32] } (29. Qe6 Rhe8 (29... Qd6 30. Rh3+ Kg7) 30. Rh3+ Kg7 31. Qd7+) (29. Rf4 Rhf8 (29... Qh5) 30. Rh4+ Qxh4 31. Qxh4+ Kg7) 29... Rhf8 { [%clk 0:15:47] } 30. Qxf8+ { [%clk 0:12:29] } 30... Rxf8 { [%clk 0:14:23] } 31. Rh1 { [%clk 0:12:37] } 31... Rf2 { [%clk 0:14:23] } 32. Rxh2+ { [%clk 0:12:41] } 32... Rxh2 { [%clk 0:14:32] } 33. Rd7 { [%clk 0:12:50] } 33... g5 { [%clk 0:14:30] } 34. Rxc7 { [%clk 0:12:42] } 34... g4 { [%clk 0:14:38] } 35. Rxa7 { [%clk 0:12:35] } 35... g3 { [%clk 0:14:47] } 36. Ra6+ { [%clk 0:12:37] } 36... Kg5 { [%clk 0:14:54] } 37. Ra7 { [%clk 0:12:25] } 37... g2 { [%clk 0:15:02] } 38. Rg7+ { [%clk 0:12:22] } 38... Kf4 { [%clk 0:15:10] } 39. c5 { [%clk 0:11:59] } 39... Rh1+ { [%clk 0:15:15] } 40. Kd2 { [%clk 0:12:08] } 40... g1=Q { [%clk 0:15:16] } 41. Rxg1 { [%clk 0:12:17] } 41... Rxg1 { [%clk 0:15:24] } 42. c6 { [%clk 0:12:24] } 42... Rg8 { [%clk 0:15:30] } 43. b4 { [%clk 0:12:32] } 43... Ke5 { [%clk 0:15:36] } 44. Kc3 { [%clk 0:12:40] } 44... Kd5 { [%clk 0:15:44] } 45. b5 { [%clk 0:12:45] } 45... Kc5 { [%clk 0:15:51] } 46. a4 { [%clk 0:12:46] } 46... h5 { [%clk 0:15:59] } 0-1
+
+
+[Event "rated rapid game"]
+[Site "https://lichess.org/game/16QlPP4M"]
+[Date "2026.10.31"]
+[Round "-"]
+[White "bipulpattanaik4321"]
+[Black "i_will_analyze_games"]
+[Result "0-1"]
+[TimeControl "900+10"]
+[Termination "Normal"]
+[GameId "16QlPP4M"]
+[Variant "Standard"]
+[ECO "D00"]
+[Opening "Queen's Pawn Game: Chigorin Variation"]
+[StudyName "Played Games"]
+[ChapterName "bipulpattanaik4321 - i_will_analyze_games"]
+[ChapterURL "https://lichess.org/study/YYeDmlVd/vn7Ry0hZ"]
+[Annotator "https://lichess.org/@/i_will_analyze_games"]
+
+1. d4 { [%clk 0:15:00] } 1... d5 { [%clk 0:15:00] } 2. Nc3 { [%clk 0:15:07] } 2... c6 { [%clk 0:14:51] } 3. Bf4 { [%clk 0:15:06] } 3... Bf5 { [%clk 0:14:54] } 4. f3 { [%clk 0:15:11] } 4... Bg6 { [%clk 0:14:49] } 5. e3 { [%clk 0:15:09] } 5... e6 { [%clk 0:13:52] } 6. Bd3 { [%clk 0:14:58] } 6... Bd6 { [%clk 0:13:47] } 7. Bg3 { [%clk 0:14:57] } 7... Nf6 { [%clk 0:13:44] } 8. Nge2 { [%clk 0:14:51] } 8... Nh5?! { moving the knight twice } { [%clk 0:13:14] } (8... O-O) 9. a3 { [%clk 0:14:49] } 9... Nxg3 { [%clk 0:12:51] } 10. hxg3 { [%clk 0:14:56] } 10... f5 { [%clk 0:11:46] } (10... O-O 11. Bxg6 fxg6 12. f4 Nd7) 11. Nf4 { [%clk 0:14:24] } 11... O-O?? { [%clk 0:11:26] } (11... Bxf4 12. gxf4 $14 { the black bishop is useless. white's bishop is slightly better. }) 12. Nxe6 { [%clk 0:14:04] } 12... Bxg3+ { [%clk 0:11:32] } (12... Qe7 13. Nxf8 Qxe3+ 14. Qe2 Qxe2+ 15. Nxe2 (15. Kxe2) 15... Kxf8 16. f4 $16) 13. Kd2 { [%clk 0:14:10] } 13... Qe7 { [%clk 0:09:53] } (13... Qb6 14. Nxf8 Qxb2 (14... Kxf8 15. b4) 15. Rb1 Qxa3 16. Ne6) 14. Nxf8 { [%clk 0:14:11] } 14... Kxf8 { [%clk 0:10:03] } 15. Qe2 { [%clk 0:14:06] } 15... Nd7 { [%clk 0:10:01] } 16. e4 { [%clk 0:13:59] } 16... Qg5+ { [%clk 0:09:52] } (16... fxe4 17. fxe4 Qg5+ 18. Kd1 Re8 19. Qf3+ Kg8 20. e5 Rf8 21. Qe2 Rf2) 17. Kd1 { I don't understand why taking with the d pawn is better (acc to SF) } { [%clk 0:13:54] } 17... Re8 { [%clk 0:07:45] } (17... fxe4 18. fxe4 $7 Kg8) 18. e5 { [%clk 0:13:28] } 18... c5?! { [%clk 0:07:40] } 19. Nxd5 { [%clk 0:12:42] } (19. Bb5 cxd4 20. Nxd5 (20. Bxd7 Rd8)) 19... cxd4 { [%clk 0:07:47] } 20. Ne3?? { [%clk 0:12:49] } 20... dxe3 { [%clk 0:07:42] } 21. Bb5 { [%clk 0:12:54] } 21... Rxe5 { [%clk 0:07:22] } 22. Bxd7 { [%clk 0:12:57] } 22... Rd5+ { [%clk 0:07:20] } 23. Kc1 { [%clk 0:12:59] } 23... Rd2?! { [%clk 0:07:12] } (23... Rxd7) 24. Qc4 { [%clk 0:12:17] } 24... Rxd7 { [%clk 0:07:06] } 0-1
+
+

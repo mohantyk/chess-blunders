@@ -81,6 +81,26 @@ OLLAMA_BASE_URL=https://your-ollama-endpoint.com/v1
 
 The app uses these to connect to an Ollama-compatible LLM endpoint for pre-filling classifications and generating training recommendations. If these are missing, the app still works — LLM features are silently skipped.
 
+**Lichess token (only for a private study).** "Check for new games" downloads your study from Lichess. If the study is private, add a read-only token:
+
+1. Open <https://lichess.org/account/oauth/token/create?scopes[]=study:read&description=chess-patterns>. Only **Read private studies and broadcasts** should be ticked.
+2. Click **Create** and add the token to `.env`:
+
+```env
+LICHESS_TOKEN=lip_...
+```
+
+The app never writes to Lichess, so no other scope is needed.
+
+### 4b. Set your Lichess username and study
+
+In `config.yaml`:
+
+```yaml
+lichess_username: i_will_analyze_games   # used to work out which colour you played
+lichess_study_id: YYeDmlVd               # the study all your games go into (ID or URL)
+```
+
 ---
 
 ### 5. Run the app
@@ -96,7 +116,21 @@ python main.py
 
 This section walks a new user through a full session from first launch to reviewing patterns.
 
-### Step 1 — Export a game from Lichess
+### Step 1 — Get your games in
+
+**Option A — sync your study (recommended).** Put each game in your Lichess study (one chapter per game) and analyse it there. Then click **⟳ Check for new games** on the home screen. The app downloads the whole study and lists every chapter:
+
+| Status | Meaning | Ticked by default? |
+|---|---|---|
+| **New** | Not imported yet | Yes |
+| **Updated** | Imported before, but you've changed the analysis since (new variations, comments, glyphs or arrows; clock changes don't count) | No |
+| **Already imported** | Nothing changed. Hidden until you tick **Show all** | No |
+
+Your colour is detected from `lichess_username`. If it can't be, pick White/Black on that row. Click **Import & analyse selected →** and the wizard runs on each ticked chapter in turn. Re-importing an updated chapter replaces the stored PGN; wizard entries you already saved are never changed.
+
+**Option B — paste a PGN.** Follow the steps below. Pasting a whole-study export (several chapters) shows the same chapter list as Option A.
+
+#### Exporting a single game from Lichess
 
 Open the game you want to review on Lichess. Before exporting:
 
@@ -112,8 +146,10 @@ Open the game you want to review on Lichess. Before exporting:
 
 1. Launch the app: `python main.py`
 2. Paste your PGN into the large text area on the home screen.
-3. Click **White** or **Black** to indicate which side you played.
+3. Click **White** or **Black** to indicate which side you played. The app picks it for you if your `lichess_username` is in the game's headers.
 4. Click **Analyse →**.
+
+Pasting a game that's already in the database reuses it rather than adding a duplicate.
 
 The app parses the PGN, extracts your flagged moves, and launches the review wizard.
 
@@ -198,6 +234,10 @@ chess-patterns/
 │   ├── patterns.py       # patterns dashboard (phase 2 placeholder)
 │   └── settings.py       # editable config screen
 ├── core/
+│   ├── analysis_tree.py  # study chapter → moves, variations, otb/swindle tags, evals, arrows, clocks
+│   ├── study_import.py   # Lichess study download + New / Updated / Already imported
+│   ├── game_keys.py      # source_key (de-duplication) and analysis_hash (change detection)
+│   ├── migrate_f1.py     # one-off fix for mistake/blunder labels saved before the ?/?? fix
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
 │   ├── db.py             # SQLite read/write
 │   ├── config.py         # config.yaml loading and saving
@@ -205,12 +245,35 @@ chess-patterns/
 │   ├── llm.py            # LLM pre-fill and recommendations
 │   └── puzzles.py        # Lichess puzzle API
 ├── config.yaml           # theme lists and settings (edit here or in-app)
+├── tests/                # pytest suite (fixtures/sample_study.pgn = two real study chapters)
 ├── blunders.db           # SQLite database (auto-created on first run)
 ├── .env                  # secrets — never commit this file
 └── requirements.txt
 ```
 
 ---
+
+## Running the tests
+
+```bash
+uv run pytest            # everything except live Lichess calls
+uv run pytest -m network # also download the real study (needs LICHESS_TOKEN)
+```
+
+The UI smoke tests open a hidden Tk window. If cairo isn't loadable in the test process, they swap in a board stub so the flow is still tested.
+
+## Database backups and migrations
+
+- On launch, the app adds any new columns it needs. If `blunders.db` already exists, it first copies it to `blunders.db.bak-<YYYYMMDD-HHMMSS>`.
+- Before a fix, the parser had `?` and `??` swapped, so wizard entries saved back then may be labelled the wrong way round. To check them:
+
+  ```bash
+  python -m core.migrate_f1          # dry run: lists every row it would change
+  python -m core.migrate_f1 --apply  # backs up blunders.db, then fixes those rows
+  ```
+
+  A row only changes if its original glyph can be re-read from the stored game. Every other row is left alone.
+- To try the app without touching your real data: `CHESS_PATTERNS_DB=/tmp/scratch.db python main.py`.
 
 ## Notes
 
