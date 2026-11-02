@@ -50,3 +50,5 @@ lichess_theme_map:
   Calculation error: hangingPiece
 missed_win_threshold: 150
 winning_threshold: 150
+lichess_username: i_will_analyze_games
+lichess_study_id: YYeDmlVd
