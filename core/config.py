@@ -13,7 +13,7 @@ DEFAULTS = {
     ],
     "secondary_themes": [
         "None", "Time pressure", "Opening prep gap", "Endgame technique",
-        "King safety", "Opponent surprise",
+        "King safety", "Opponent surprise", "Rushed (time available)",
     ],
     "training_prescriptions": [
         "Tactics puzzles (general)", "Fork puzzles", "Pin and skewer puzzles",
@@ -34,6 +34,32 @@ DEFAULTS = {
     # the study all my games go into. Accepts the ID or the full study URL.
     "lichess_username": "i_will_analyze_games",
     "lichess_study_id": "YYeDmlVd",
+    # Engine service (PRD F4). command is a list, e.g.
+    # ["ssh", "mac-mini.local", "/opt/homebrew/bin/stockfish"] to run on the Mac mini.
+    # time_ms, if set, is used instead of depth.
+    "engine": {
+        "command": ["stockfish"],
+        "threads": 4,
+        "hash_mb": 512,
+        "depth": 20,
+        "time_ms": None,
+        "multipv": 3,
+        "cache_path": "engine_cache.db",
+    },
+    # Analysis-review thresholds (PRD F5-F10). Win% values are points on 0-100.
+    "review": {
+        "candidate_window": 5,          # engine top set: moves within this of the best
+        "chose_window": 5,              # played move counts as best within this
+        "line_break_threshold": 10,     # loss that makes a hole in an analysis line
+        "blind_spot_threshold": 10,     # loss on an unanalysed mainline move
+        "blind_spot_max": 3,            # blind spots reported per game
+        "rushed_seconds": 30,           # "rushed" = faster than this ...
+        "rushed_clock_fraction": 0.5,   # ... with more than this share of base time left
+        "eval_bands": [0.5, 1.2, 2.5],  # pawns: = | +=/=+ | ±/∓ | +-/-+
+        "glyph_good_window": 2,         # ?/??/?! on a move within this of best = mismatch
+        "glyph_bad_threshold": 10,      # !/!!/!? on a move losing this much = mismatch
+        "only_move_window": 5,          # □ but another move within this of best = mismatch
+    },
 }
 
 
@@ -48,9 +74,14 @@ def load_config() -> dict:
     ensure_config()
     with open(CONFIG_PATH, "r") as f:
         data = yaml.safe_load(f) or {}
-    # Fill in any missing keys from defaults
+    # Fill in any missing keys from defaults (one level deep for nested sections,
+    # so a partly-filled "engine:" or "review:" block still gets every setting).
     for k, v in DEFAULTS.items():
-        data.setdefault(k, v)
+        if isinstance(v, dict) and isinstance(data.get(k), dict):
+            for sub_k, sub_v in v.items():
+                data[k].setdefault(sub_k, sub_v)
+        else:
+            data.setdefault(k, v)
     return data
 
 
