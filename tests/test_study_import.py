@@ -8,6 +8,7 @@ import requests
 
 from core import db
 from core.game_keys import analysis_hash, source_key
+from core.pgn_parser import read_games
 from core.study_import import (
     STATUS_IMPORTED, STATUS_NEW, STATUS_UPDATED, StudyFetchError, classify_chapters,
     fetch_study_pgn, import_chapter, infer_color, study_id_from,
@@ -247,3 +248,24 @@ def test_live_study_download(fresh_db):
     assert chapters and all(ch.source_key.startswith("chapter:") for ch in chapters)
     _import_all(chapters)
     assert all(ch.status == STATUS_IMPORTED for ch in classify_chapters(text, ME))
+
+
+@pytest.mark.network
+def test_live_study_matches_pasted_sample(fresh_db, sample_pgn_text):
+    """Chapters pasted from the sample are recognised when the live study is synced.
+
+    The keys must match. The analysis hash should too, unless the chapter has
+    been edited on Lichess since the fixture was exported; statuses are printed
+    (run with -s) so a real edit can be told apart from a hashing mismatch.
+    """
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+    if not os.environ.get("LICHESS_TOKEN"):
+        pytest.skip("LICHESS_TOKEN not set")
+    _import_all(classify_chapters(sample_pgn_text, ME))
+    live = classify_chapters(fetch_study_pgn("YYeDmlVd"), ME)
+    sample_keys = {source_key(g) for g in read_games(sample_pgn_text)}
+    found = {ch.source_key: ch for ch in live if ch.source_key in sample_keys}
+    assert set(found) == sample_keys
+    for ch in live:
+        print(f"{ch.status_label:<17} {ch.user_color or '?':<6} {ch.name}")
