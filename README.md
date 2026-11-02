@@ -111,11 +111,11 @@ Your colour is detected from `lichess_username`. If it can't be, pick White/Blac
 
 Open the game you want to review on Lichess. Before exporting:
 
-- Make sure the game has annotations. Either Lichess added "?" / "??" symbols automatically (via computer analysis), or you added comments yourself.
+- Annotate it first: mark your mistakes with "?" / "??", add variations (tag in-game candidates with `otb`), eval symbols and comments.
 - Click **Share & export → Export PGN**, and tick **Include annotations**.
 - Copy the full PGN text to your clipboard.
 
-> The app flags moves based on the "?" (mistake) and "??" (blunder) symbols in the PGN, plus any move comments. Games without these will produce no flagged moves.
+> Every imported game gets an engine review of your analysis. The wizard then takes your "?" (mistake) and "??" (blunder) moves, plus moves the engine flags (missed candidates, worse choices, blind spots). Comments go into the wizard notes, but don't put a move in the wizard on their own.
 
 ---
 
@@ -209,28 +209,24 @@ The wizard-entry charts below show:
 
 ### Step 6 — Adjust settings
 
-Click **⚙ Settings** on the home screen to:
+Click **⚙ Settings** on the home screen to edit:
 
-- Edit the lists of primary and secondary themes shown in the wizard dropdowns
-- Update your LLM endpoint, model, and API key
-- Change the app appearance theme
+- the primary and secondary themes and training prescriptions shown in the wizard;
+- the map from your themes to Lichess puzzle themes;
+- the missed-win thresholds.
 
-Changes are saved to `config.yaml` immediately.
+Changes are saved to `config.yaml` immediately. The engine and review settings (`engine:` and `review:`) and your Lichess username/study aren't in the Settings screen yet: edit them in `config.yaml`. The LLM endpoint and model are set in `.env`.
 
 ---
 
 ## Usage summary
 
-1. Export a game from Lichess with annotations (use the "?" and "??" symbols, or add comments)
-2. Paste the PGN into the text area on the home screen
-3. Select which colour you played
-4. Click **Analyse** — the app finds your blunders, mistakes, and missed wins
-5. Work through the wizard for each flagged move:
-   - Pick the thinking step that broke down (1–4)
-   - Say whether you saw the idea or not
-   - Choose a theme and training prescription
-   - Optionally add notes
-6. After saving, the app fetches targeted Lichess puzzles and an LLM recommendation
+1. Analyse the game by hand in your Lichess study: variations (`otb` for in-game candidates), eval symbols, "?" / "??", comments.
+2. Click **⟳ Check for new games** (or paste a PGN and click **Analyse →**). Tick the chapters to import.
+3. Stockfish checks your analysis, then the **Review** screen opens. Work through the findings: hint first, then **Show answer**.
+4. **Continue to wizard →**: classify each queued move (thinking step, seen or not, themes, fix, prescription). Some fields are pre-filled from the engine.
+5. After saving, the app fetches targeted Lichess puzzles and an LLM recommendation.
+6. Re-open any game from **📋 Games**. Watch your trends on **📊 Patterns**.
 
 ---
 
@@ -245,7 +241,7 @@ chess-patterns/
 │   ├── flow.py           # engine progress screen; import → engine → review → wizard
 │   ├── games.py          # list of imported games
 │   ├── analyze.py        # wizard screen
-│   ├── patterns.py       # patterns dashboard (phase 2 placeholder)
+│   ├── patterns.py       # patterns dashboard: analysis skill + wizard-entry charts
 │   └── settings.py       # editable config screen
 ├── core/
 │   ├── analysis_tree.py  # study chapter → moves, variations, otb/swindle tags, evals, arrows, clocks
@@ -266,7 +262,10 @@ chess-patterns/
 │   ├── board_render.py   # FEN → board image pipeline
 │   ├── llm.py            # LLM pre-fill and recommendations
 │   └── puzzles.py        # Lichess puzzle API
+├── scripts/
+│   └── bench_engine.py   # benchmark engine settings on your own positions
 ├── config.yaml           # theme lists and settings (edit here or in-app)
+├── prd.md                # product requirements: what the app does and why
 ├── tests/                # pytest suite (fixtures/sample_study.pgn = two real study chapters)
 ├── blunders.db           # SQLite database (auto-created on first run)
 ├── .env                  # secrets — never commit this file
@@ -348,4 +347,6 @@ The UI smoke tests open a hidden Tk window. If cairo isn't loadable in the test 
 
 - `blunders.db` and `.env` are not committed to git
 - `config.yaml` theme lists can be edited directly or via the in-app Settings screen
+- `engine_cache.db` (Stockfish results) is not committed and can be deleted at any time
+- `prd.md` describes the whole app: features, data model, decisions and what's still to come
 - New themes added via the "Other…" option are saved back to `config.yaml` automatically
