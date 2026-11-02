@@ -76,7 +76,11 @@ def test_legacy_database_migrates_with_backup(tmp_db, sample_games):
     # Game 2 is the same game pasted earlier; the newer row gets the key, nothing deleted.
     assert games[2]["source_key"] is None
     assert len(games) == 3
-    assert _rows("SELECT * FROM blunders") == blunders_before
+    after = _rows("SELECT * FROM blunders")
+    assert [{k: r[k] for k in blunders_before[0]} for r in after] == blunders_before
+    assert after[0]["source"] is None            # old rows: new columns are NULL
+    tables = {r["name"] for r in _rows("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"analysis_runs", "decision_points", "findings"} <= tables
 
 
 def test_second_init_is_a_no_op(tmp_db, sample_games):
@@ -113,3 +117,30 @@ def test_update_game_analysis_keeps_wizard_entries(tmp_db):
     assert game["analysis_hash"] == "new" and "c5" in game["pgn_raw"]
     assert game["user_color"] == "white"
     assert _rows("SELECT * FROM blunders") == before
+
+
+def test_m2_database_gets_review_tables_with_backup(tmp_db, sample_games):
+    """A database from M1/M2 (games columns present, no review tables) is backed up first."""
+    _make_legacy_db(tmp_db, sample_games)
+    db.init_db()
+    conn = db.get_connection()
+    for t in ("findings", "decision_points", "analysis_runs"):
+        conn.execute(f"DROP TABLE {t}")
+    conn.commit()
+    conn.close()
+    db.init_db()
+    assert len(glob.glob(tmp_db + ".bak-*")) == 2
+    cols = {r["name"] for r in _rows("PRAGMA table_info(findings)")}
+    assert {"status", "hint_text", "answer_text", "path_san_json", "blunder_id"} <= cols
+    bcols = {r["name"] for r in _rows("PRAGMA table_info(blunders)")}
+    assert set(db.BLUNDERS_NEW_COLUMNS) <= bcols
+
+
+def test_new_wizard_entries_default_to_manual(tmp_db):
+    """Entries saved by the existing wizard are marked source='manual'."""
+    db.init_db()
+    gid = db.insert_game("1. e4 *", source_key="k")
+    bid = db.insert_blunder(gid, {"move_number": 1, "move_side": "white", "move_san": "e4",
+                                  "fen": "f", "flag_type": "mistake"})
+    row = _rows(f"SELECT source, finding_id FROM blunders WHERE id = {bid}")[0]
+    assert row == {"source": "manual", "finding_id": None}
