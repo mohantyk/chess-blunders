@@ -51,7 +51,9 @@ class GamesScreen(ctk.CTkFrame):
 
     def open(self, game_id: int) -> None:
         """Open the review for a game; Back returns to this list."""
-        from ui.flow import open_review
+        from core.run_review import load_game
+        from core.wizard_queue import build_queue
+        from ui.flow import open_review, open_wizard
         master = self.master
 
         def back_to_list() -> None:
@@ -60,4 +62,15 @@ class GamesScreen(ctk.CTkFrame):
                 w.destroy()
             GamesScreen(master, on_back=self._on_back).pack(fill="both", expand=True)
 
-        open_review(master, game_id, on_back=back_to_list)
+        def wizard_label():
+            """'Wizard →' if this game has moves waiting for the wizard."""
+            return "Wizard →" if build_queue(game_id) else None
+
+        def to_wizard() -> None:
+            """Classify this game's queued moves, then come back to the list."""
+            row = load_game(game_id)
+            open_wizard(master, game_id, row["user_color"] or "white", build_queue(game_id),
+                        on_done=back_to_list)
+
+        open_review(master, game_id, on_back=back_to_list, on_continue=to_wizard,
+                    continue_label=wizard_label)

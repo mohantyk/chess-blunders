@@ -17,7 +17,6 @@ import threading
 import customtkinter as ctk
 
 from core.config import load_config
-from core.pgn_parser import parse_pgn
 from core.study_import import (
     STATUS_IMPORTED, StudyFetchError, classify_chapters, fetch_study_pgn, import_chapter,
 )
@@ -26,16 +25,6 @@ ERROR_COLOR = "#e07070"
 WARN_COLOR = "#e0a040"
 OK_COLOR = "#70c070"
 STATUS_COLORS = {"new": OK_COLOR, "updated": WARN_COLOR, "imported": "gray"}
-
-
-def _flag_moves(game, color: str, cfg: dict) -> list:
-    """Flagged moves of one game for the wizard (existing glyph/comment logic)."""
-    _, flagged = parse_pgn(
-        game, user_color=color,
-        missed_win_threshold=cfg.get("missed_win_threshold", 150),
-        winning_threshold=cfg.get("winning_threshold", 150),
-    )
-    return flagged or []
 
 
 def show_home(master) -> None:
@@ -233,12 +222,11 @@ class HomeScreen(ctk.CTkFrame):
         if chapter.user_color:
             self._set_color(chapter.user_color)
         color = self._user_color
-        flagged = _flag_moves(chapter.game, color, cfg)
         game_id = import_chapter(chapter, user_color=color)
-        # Games without ?/?? moves still get the engine review; the wizard is
-        # simply skipped for them.
-        start_chapters(self.master, [{"game_id": game_id, "flagged": flagged,
-                                      "user_color": color, "label": chapter.name}])
+        # Engine → review → wizard; the wizard queue (?/?? moves + engine
+        # findings) is built after the engine run.
+        start_chapters(self.master, [{"game_id": game_id, "user_color": color,
+                                      "label": chapter.name}])
 
     # ------------------------------------------------------------------ chapter list
 
@@ -303,12 +291,10 @@ class HomeScreen(ctk.CTkFrame):
             self._set_status("Pick your colour for: " + ", ".join(missing), ERROR_COLOR)
             return
 
-        cfg = load_config()
         queue = []
         for ch, color in selected:
             game_id = import_chapter(ch, user_color=color)
-            queue.append({"game_id": game_id, "flagged": _flag_moves(ch.game, color, cfg),
-                          "user_color": color, "label": ch.name})
+            queue.append({"game_id": game_id, "user_color": color, "label": ch.name})
         start_chapters(self.master, queue)
 
     # ------------------------------------------------------------------ navigation
