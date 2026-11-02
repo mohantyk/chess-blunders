@@ -155,7 +155,21 @@ The app parses the PGN, extracts your flagged moves, and launches the review wiz
 
 ---
 
-### Step 3 — Work through the review wizard
+### Step 3 — Review your analysis
+
+After import, each chapter is checked by Stockfish (a progress bar shows how far it's got; **Skip engine →** stops it), then the **Review** screen opens:
+
+- **Board (left):** the position, your Lichess arrows and circles, and the last move. Once you reveal an answer, the engine's move is drawn in purple.
+- **Move list (centre):** the game with all your variations. Lines tagged `otb` are green, post-game ideas blue, and moves with a finding are marked ●. Click a move to jump to it.
+- **Findings (right):** grouped by check. Each finding shows a **hint** first (where to look). Click **Show answer** for the engine's move, line and eval. For a line end where you didn't give an eval, you pick your own first (`+-` … `-+`), then see the engine's. **Dismiss** hides a finding you disagree with and leaves it out of the metrics.
+- **Header:** the game's analysis-skill metrics, shown as small counts like "2/3", not just percentages.
+- **Keys:** ← → step through the current line, ↑ ↓ switch between variations, Home / End jump to the start / end. **Open in Lichess ↗** opens the current position.
+
+**Continue to wizard →** then goes on to the wizard below. Games without `?`/`??` moves skip the wizard.
+
+Re-open any game later from **📋 Games** on the home screen. The engine only runs again if the chapter's analysis changed. Use **⟳ Re-run engine** to force it, for example after changing settings. On a re-run, findings you've already seen, dismissed or logged keep their status.
+
+### Step 4 — Work through the review wizard
 
 For each flagged move you will see:
 
@@ -182,7 +196,7 @@ After saving, the app automatically fetches relevant Lichess puzzles and (if con
 
 ---
 
-### Step 4 — Review your patterns
+### Step 5 — Review your patterns
 
 Once you have logged several games, click **📊 Patterns** on the home screen to open the patterns dashboard.
 
@@ -196,7 +210,7 @@ The dashboard shows:
 
 ---
 
-### Step 5 — Adjust settings
+### Step 6 — Adjust settings
 
 Click **⚙ Settings** on the home screen to:
 
@@ -230,6 +244,9 @@ chess-patterns/
 ├── main.py               # app entry point
 ├── ui/
 │   ├── home.py           # home / PGN import screen
+│   ├── review.py         # Review screen: board, move tree, findings (hint → answer)
+│   ├── flow.py           # engine progress screen; import → engine → review → wizard
+│   ├── games.py          # list of imported games
 │   ├── analyze.py        # wizard screen
 │   ├── patterns.py       # patterns dashboard (phase 2 placeholder)
 │   └── settings.py       # editable config screen
@@ -241,6 +258,9 @@ chess-patterns/
 │   ├── engine.py         # Stockfish service: win% scores, cache, progress
 │   ├── checks.py         # engine checks on your analysis (evals, candidates, holes, blind spots, time)
 │   ├── review.py         # command-line report: python -m core.review <pgn>
+│   ├── review_store.py   # engine runs, decision points and findings in blunders.db
+│   ├── review_nav.py     # Review-screen logic: navigation, move list, finding placement
+│   ├── run_review.py     # run the engine checks on a stored game (used by the UI)
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
 │   ├── db.py             # SQLite read/write
 │   ├── config.py         # config.yaml loading and saving
@@ -270,6 +290,7 @@ The engine checks your **own analysis**, not the game. It looks at:
 brew install stockfish                      # once
 python -m core.review tests/fixtures/sample_study.pgn
 python -m core.review my_study.pgn --chapter 3 --color black --depth 16
+python -m core.review my_study.pgn --save   # also store the findings for the Review screen
 ```
 
 **Study conventions** the checks rely on:
@@ -322,6 +343,7 @@ The UI smoke tests open a hidden Tk window. If cairo isn't loadable in the test 
 
   A row only changes if its original glyph can be re-read from the stored game. Every other row is left alone.
 - To try the app without touching your real data: `CHESS_PATTERNS_DB=/tmp/scratch.db python main.py`.
+- Engine results live in `blunders.db` tables `analysis_runs`, `decision_points` and `findings`. Wizard entries in `blunders` are never deleted or changed by a re-run.
 
 ## Notes
 
