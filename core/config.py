@@ -39,7 +39,7 @@ DEFAULTS = {
     # time_ms, if set, is used instead of depth.
     "engine": {
         "command": ["stockfish"],
-        "threads": 4,
+        "threads": 7,
         "hash_mb": 512,
         "depth": 15,
         "time_ms": None,
