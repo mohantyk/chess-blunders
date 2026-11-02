@@ -7,7 +7,9 @@ import shutil
 import sqlite3
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "blunders.db")
+# CHESS_PATTERNS_DB lets you point the app at another file (e.g. a scratch copy).
+DB_PATH = os.environ.get("CHESS_PATTERNS_DB") or os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "blunders.db")
 
 # Columns added to `games` for study import (PRD F2 / F12). Added with
 # ALTER TABLE so existing rows are kept; old rows get NULL.

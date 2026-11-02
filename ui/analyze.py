@@ -31,11 +31,21 @@ STEP_VALUES = [1, 2, 3, 4]
 
 
 class AnalyzeScreen(ctk.CTkFrame):
-    def __init__(self, master, game_id, flagged, user_color, **kwargs):
+    def __init__(self, master, game_id, flagged, user_color, on_done=None, context_label=None,
+                 **kwargs):
+        """Wizard over ``flagged`` moves of one game.
+
+        on_done: optional callback run instead of the "All moves reviewed" screen
+            (used to continue with the next chapter of a multi-chapter import).
+        context_label: optional text shown before the progress line, e.g.
+            "Chapter 1 of 2 · me – them".
+        """
         super().__init__(master, **kwargs)
         self._game_id = game_id
         self._flagged = flagged
         self._user_color = user_color
+        self._on_done = on_done
+        self._context_label = context_label
         self._index = 0
         self._cfg = load_config()
         self._board_image_ref = None  # keep reference to prevent GC
@@ -199,7 +209,10 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._move_label.configure(
             text=f"Move {move_data['move_number']} · {move_data['move_side'].title()} · {flag}"
         )
-        self._progress_label.configure(text=f"{self._index + 1} of {total} flagged moves")
+        progress = f"{self._index + 1} of {total} flagged moves"
+        if self._context_label:
+            progress = f"{self._context_label}\n{progress}"
+        self._progress_label.configure(text=progress)
         self._lichess_url_current = move_data.get("lichess_url", "")
 
         # Board
@@ -430,6 +443,10 @@ class AnalyzeScreen(ctk.CTkFrame):
     # ------------------------------------------------------------------ done
 
     def _show_done(self):
+        """Finish this game: hand over to the next chapter, or show the done screen."""
+        if self._on_done is not None:
+            self._on_done()
+            return
         for widget in self.winfo_children():
             widget.destroy()
         ctk.CTkLabel(self, text="All moves reviewed!", font=ctk.CTkFont(size=22, weight="bold")).pack(pady=(80, 16))
@@ -437,6 +454,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         ctk.CTkButton(self, text="← Analyse another game", width=200, command=self._go_home).pack()
 
     def _go_home(self):
+        """Return to the Home / import screen."""
         from ui.home import HomeScreen
         for widget in self.master.winfo_children():
             widget.destroy()
