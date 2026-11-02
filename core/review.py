@@ -6,8 +6,9 @@
 Runs the engine checks on every chapter (or one) and prints decision points,
 eval checks, line holes, blind spots, glyph disagreements, time use and the
 per-game metrics. Answers are shown directly; this is the testing tool, the
-review screen (M3) will hide them behind hints. Nothing is written to
-blunders.db (``--save`` arrives with the database tables in M3).
+review screen hides them behind hints. Nothing is written to blunders.db
+unless ``--save`` is given: then each chapter is imported if needed and the
+run, its decision points and findings are stored (statuses carried over).
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ class ChapterReview:
     color: Optional[str]
     review: Optional[GameReview]
     skipped: Optional[str] = None   # reason, if not reviewed
+    game: object = None             # the chess.pgn.Game reviewed
     positions: int = 0
     seconds: float = 0.0
 
@@ -77,7 +79,7 @@ def review_pgn(pgn_text: str, review_cfg: dict, analyse: Analyser, username: Opt
         results = analyse(fens, cb, multipv_positions(tree))
         review = review_game(tree, results.__getitem__, review_cfg)
         out.append(ChapterReview(number, name, my_color, review, positions=len(fens),
-                                 seconds=time.time() - started))
+                                 seconds=time.time() - started, game=game))
     return out
 
 
@@ -187,6 +189,33 @@ def format_chapter(cr: ChapterReview) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- saving
+
+
+def save_reviews(reviews: list, engine_id: Optional[str], settings: dict,
+                 username: Optional[str]) -> list:
+    """Store reviewed chapters in blunders.db; returns [(chapter number, game_id, run_id)].
+
+    Chapters not imported yet are imported first (same rules as the Home screen).
+    """
+    from core import db
+    from core.review_store import save_review
+    from core.study_import import STATUS_IMPORTED, classify_chapters, import_chapter
+    from core.game_keys import analysis_hash, game_pgn
+
+    db.init_db()
+    saved = []
+    for cr in reviews:
+        if cr.review is None:
+            continue
+        (chapter,) = classify_chapters(game_pgn(cr.game), username)
+        game_id = import_chapter(chapter, user_color=cr.color) \
+            if chapter.status != STATUS_IMPORTED else chapter.game_id
+        run_id = save_review(game_id, cr.review, engine_id, settings, analysis_hash(cr.game))
+        saved.append((cr.number, game_id, run_id))
+    return saved
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -201,6 +230,8 @@ def main(argv=None, engine_factory=None) -> int:
                         help="your colour (default: detected from lichess_username)")
     parser.add_argument("--depth", type=int, help="override engine.depth")
     parser.add_argument("--time-ms", type=int, help="override engine.time_ms")
+    parser.add_argument("--save", action="store_true",
+                        help="store the runs and findings in blunders.db")
     args = parser.parse_args(argv)
 
     cfg = load_config()
@@ -232,6 +263,7 @@ def main(argv=None, engine_factory=None) -> int:
                                  cfg.get("lichess_username"), chapter=args.chapter,
                                  color=args.color, progress=progress)
             stats = dict(svc.stats)
+            engine_id = svc.engine_id
     except EngineUnavailable as exc:
         print(f"Engine not available: {exc}", file=sys.stderr)
         return 2
@@ -247,6 +279,11 @@ def main(argv=None, engine_factory=None) -> int:
         print()
     print(f"Engine positions: {stats['analysed']} analysed, {stats['cache_hits']} from cache, "
           f"{stats['terminal']} finished positions.")
+    if args.save:
+        settings = {"engine": engine_cfg, "review": cfg["review"]}
+        for number, game_id, run_id in save_reviews(reviews, engine_id, settings,
+                                                    cfg.get("lichess_username")):
+            print(f"Saved chapter {number}: game {game_id}, run {run_id}.")
     return 0
 
 

@@ -22,6 +22,80 @@ GAMES_NEW_COLUMNS = {
 }
 
 
+# Columns added to `blunders` for engine-linked wizard entries (PRD F12).
+BLUNDERS_NEW_COLUMNS = {
+    "source": "TEXT",              # 'manual' | 'engine'
+    "finding_id": "INTEGER",       # findings.id the entry was logged from
+    "time_spent_s": "REAL",
+    "clock_remaining_s": "REAL",
+}
+
+# Engine review tables (PRD F12). analysis_runs.metrics_json, the findings'
+# answer_text / time columns and decision_points.layer_prefill / path_san_json
+# go beyond the PRD list: the review screen and wizard pre-fill (M4) need them.
+REVIEW_TABLES = {
+    "analysis_runs": """
+        CREATE TABLE IF NOT EXISTS analysis_runs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id       INTEGER NOT NULL REFERENCES games(id),
+            run_at        TEXT NOT NULL,
+            engine_id     TEXT,
+            settings_json TEXT,
+            analysis_hash TEXT,
+            metrics_json  TEXT
+        )""",
+    "decision_points": """
+        CREATE TABLE IF NOT EXISTS decision_points (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id               INTEGER NOT NULL REFERENCES analysis_runs(id),
+            game_id              INTEGER NOT NULL REFERENCES games(id),
+            move_number          INTEGER,
+            side                 TEXT,
+            fen                  TEXT,
+            played_san           TEXT,
+            path_san_json        TEXT,
+            otb_candidates_json  TEXT,
+            post_candidates_json TEXT,
+            engine_top_json      TEXT,
+            candidates_known     INTEGER,
+            hit                  INTEGER,
+            post_hit             INTEGER,
+            chose_best           INTEGER,
+            layer_prefill        TEXT,
+            time_spent_s         REAL
+        )""",
+    "findings": """
+        CREATE TABLE IF NOT EXISTS findings (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id            INTEGER NOT NULL REFERENCES analysis_runs(id),
+            game_id           INTEGER NOT NULL REFERENCES games(id),
+            type              TEXT NOT NULL,
+            path_san_json     TEXT NOT NULL,
+            move_number       INTEGER,
+            side              TEXT,
+            fen               TEXT,
+            user_value        TEXT,
+            engine_value      TEXT,
+            best_move_san     TEXT,
+            pv_san            TEXT,
+            win_loss          REAL,
+            hint_text         TEXT,
+            answer_text       TEXT,
+            explanation       TEXT,
+            status            TEXT NOT NULL DEFAULT 'open',
+            blunder_id        INTEGER REFERENCES blunders(id),
+            time_spent_s      REAL,
+            clock_remaining_s REAL,
+            updated_at        TEXT
+        )""",
+}
+REVIEW_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_findings_game ON findings(game_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_runs_game ON analysis_runs(game_id)",
+    "CREATE INDEX IF NOT EXISTS idx_dps_run ON decision_points(run_id)",
+]
+
+
 def get_connection():
     """Open a connection to blunders.db with rows accessible by column name."""
     conn = sqlite3.connect(DB_PATH)
@@ -46,6 +120,11 @@ def backup_db(reason: str = "") -> str | None:
     shutil.copy2(DB_PATH, path)
     print(f"[db] Backed up database to {path}" + (f" ({reason})" if reason else ""))
     return path
+
+
+def _tables(conn) -> set:
+    """Names of the tables currently in the database."""
+    return {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
 
 def _table_columns(conn, table: str) -> set:
@@ -101,13 +180,24 @@ def init_db():
     conn.commit()
 
     missing = [col for col in GAMES_NEW_COLUMNS if col not in _table_columns(conn, "games")]
+    missing_b = [col for col in BLUNDERS_NEW_COLUMNS
+                 if col not in _table_columns(conn, "blunders")]
+    missing_t = [t for t in REVIEW_TABLES if t not in _tables(conn)]
     # sqlite3 commits ALTER TABLE immediately, so back up *before* touching anything.
-    if existed and (missing or _plan_source_key_backfill(conn)):
+    if existed and (missing or missing_b or missing_t or _plan_source_key_backfill(conn)):
         conn.close()
-        backup_db("games: study-import columns / source_key backfill")
+        backup_db("schema migration: " + ", ".join(
+            [f"games.{c}" for c in missing] + [f"blunders.{c}" for c in missing_b]
+            + missing_t) if (missing or missing_b or missing_t) else "source_key backfill")
         conn = get_connection()
     for col in missing:
         conn.execute(f"ALTER TABLE games ADD COLUMN {col} {GAMES_NEW_COLUMNS[col]}")
+    for col in missing_b:
+        conn.execute(f"ALTER TABLE blunders ADD COLUMN {col} {BLUNDERS_NEW_COLUMNS[col]}")
+    for ddl in REVIEW_TABLES.values():
+        conn.execute(ddl)
+    for ddl in REVIEW_INDEXES:
+        conn.execute(ddl)
     planned = _plan_source_key_backfill(conn)
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_key ON games(source_key)")
     for upd in planned:
@@ -218,8 +308,10 @@ def insert_blunder(game_id, data: dict):
         "lichess_url", "flag_type", "annotation", "step", "layer", "diagnosis",
         "primary_theme", "secondary_theme", "one_sentence_fix", "training_prescription",
         "puzzle_urls", "llm_recommendation", "notes",
+        "source", "finding_id", "time_spent_s", "clock_remaining_s",
     ]
-    values = [game_id, datetime.utcnow().isoformat()] + [data.get(f) for f in fields[2:]]
+    values = [game_id, datetime.utcnow().isoformat()] + [
+        data.get(f, "manual" if f == "source" else None) for f in fields[2:]]
     placeholders = ", ".join(["?"] * len(fields))
     col_list = ", ".join(fields)
     c.execute(f"INSERT INTO blunders ({col_list}) VALUES ({placeholders})", values)
