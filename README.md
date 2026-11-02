@@ -238,6 +238,9 @@ chess-patterns/
 │   ├── study_import.py   # Lichess study download + New / Updated / Already imported
 │   ├── game_keys.py      # source_key (de-duplication) and analysis_hash (change detection)
 │   ├── migrate_f1.py     # one-off fix for mistake/blunder labels saved before the ?/?? fix
+│   ├── engine.py         # Stockfish service: win% scores, cache, progress
+│   ├── checks.py         # engine checks on your analysis (evals, candidates, holes, blind spots, time)
+│   ├── review.py         # command-line report: python -m core.review <pgn>
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
 │   ├── db.py             # SQLite read/write
 │   ├── config.py         # config.yaml loading and saving
@@ -253,10 +256,55 @@ chess-patterns/
 
 ---
 
+## Checking your analysis with Stockfish (command line)
+
+The engine checks your **own analysis**, not the game. It looks at:
+
+- **your evaluations:** do your `=`, `+=`, `±`, `+-` symbols match the engine's?
+- **your in-game candidates:** did the moves you tagged `otb` include the engine's best, and did you pick the best of them?
+- **holes in your lines:** a move inside one of your variations that's a mistake, especially a weak reply you assumed for the opponent.
+- **blind spots:** costly moves you didn't annotate at all.
+- **time use:** mistakes played fast while you still had plenty of time.
+
+```bash
+brew install stockfish                      # once
+python -m core.review tests/fixtures/sample_study.pgn
+python -m core.review my_study.pgn --chapter 3 --color black --depth 16
+```
+
+**Study conventions** the checks rely on:
+
+| What | How |
+|---|---|
+| In-game candidate | Write `otb` in the comment of a variation's first move |
+| My evaluation | Lichess eval glyphs `=` `+=` `=+` `±` `∓` `+-` `-+` (and `∞` for unclear) |
+| Swindle line | Write `swindle` in a comment; its eval isn't judged |
+
+Chapters without `otb` tags show in-game candidate stats as "unknown" rather than misses.
+
+**Engine settings** (`engine:` in `config.yaml`): `command` (default `["stockfish"]`; to use the Mac mini, `["ssh", "mac-mini.local", "/opt/homebrew/bin/stockfish"]`), `threads`, `hash_mb`, `depth` or `time_ms`, `multipv`.
+
+Results are cached in `engine_cache.db` (not in git), so re-running a chapter is fast. Deleting the cache file is always safe.
+
+**Thresholds** (`review:` in `config.yaml`) are first guesses; tune them to taste:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `candidate_window` | 5 | win% points: moves this close to the best count as "top" |
+| `chose_window` | 5 | your played move counts as best among your candidates within this |
+| `line_break_threshold` | 10 | a move in your line losing this much is a hole |
+| `blind_spot_threshold` / `blind_spot_max` | 10 / 3 | unannotated moves losing this much; at most this many per game |
+| `rushed_seconds` / `rushed_clock_fraction` | 30 / 0.5 | a mistake played faster than this with more than this share of the base time left |
+| `eval_bands` | [0.5, 1.2, 2.5] | pawn boundaries between `=`, `+=`, `±`, `+-` |
+| `glyph_good_window` / `glyph_bad_threshold` / `only_move_window` | 2 / 10 / 5 | move-glyph check |
+
+Win% uses the Lichess formula. So a 2-pawn slip when you're already +8 barely counts, while a 1-pawn slip near equality does.
+
 ## Running the tests
 
 ```bash
-uv run pytest            # everything except live Lichess calls
+uv run pytest            # everything except live Lichess calls (engine tests use stubs;
+                         # two short real-Stockfish tests run if it's installed)
 uv run pytest -m network # also download the real study (needs LICHESS_TOKEN)
 ```
 

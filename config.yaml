@@ -24,6 +24,7 @@ secondary_themes:
 - King safety
 - Opponent surprise
 - Calculation
+- Rushed (time available)
 training_prescriptions:
 - Tactics puzzles (general)
 - Fork puzzles
@@ -52,3 +53,23 @@ missed_win_threshold: 150
 winning_threshold: 150
 lichess_username: i_will_analyze_games
 lichess_study_id: YYeDmlVd
+engine:
+  command: ["stockfish"]   # e.g. ["ssh", "mac-mini.local", "/opt/homebrew/bin/stockfish"]
+  threads: 7
+  hash_mb: 512
+  depth: 15
+  time_ms: null            # set (e.g. 1000) to use time per position instead of depth
+  multipv: 3
+  cache_path: engine_cache.db
+review:
+  candidate_window: 5       # win% points
+  chose_window: 5
+  line_break_threshold: 10
+  blind_spot_threshold: 10
+  blind_spot_max: 3
+  rushed_seconds: 30
+  rushed_clock_fraction: 0.5
+  eval_bands: [0.5, 1.2, 2.5]  # pawns: = | +=  | ± | +-
+  glyph_good_window: 2
+  glyph_bad_threshold: 10
+  only_move_window: 5
