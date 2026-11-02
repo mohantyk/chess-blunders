@@ -58,10 +58,10 @@ def save_review(game_id: int, review: GameReview, engine_id: Optional[str] = Non
     try:
         cur = conn.execute(
             """INSERT INTO analysis_runs (game_id, run_at, engine_id, settings_json,
-                                          analysis_hash, metrics_json)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+                                          analysis_hash, metrics_json, move_evals_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (game_id, _now(), engine_id, json.dumps(settings or {}), analysis_hash,
-             json.dumps(review.metrics())))
+             json.dumps(review.metrics()), json.dumps(review.move_evals)))
         run_id = cur.lastrowid
 
         for d in review.decisions:
@@ -116,6 +116,14 @@ def save_review(game_id: int, review: GameReview, engine_id: Optional[str] = Non
         return run_id
     finally:
         conn.close()
+
+
+def move_evals(game_id: int) -> dict:
+    """{tuple(path_san): {played_san, played_eval, best_san, best_eval, loss}} of the latest run."""
+    run = latest_run(game_id)
+    if run is None or not run["move_evals_json"]:
+        return {}
+    return {tuple(m["path_san"]): m for m in json.loads(run["move_evals_json"])}
 
 
 def latest_run(game_id: int):

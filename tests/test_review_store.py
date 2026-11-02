@@ -177,3 +177,13 @@ def test_cli_without_save_writes_nothing(tmp_db, tmp_path, monkeypatch):
     monkeypatch.setattr(review, "load_config", lambda: cfg)
     review.main([SAMPLE_PGN_PATH], engine_factory=FakeEngine)
     assert not os.path.exists(tmp_db)
+
+
+def test_move_evals_saved(game_id):
+    """The latest run's per-move evals come back keyed by path."""
+    stub = StubEngine(0).set("e4 e5", [("d4", 40)]).set("e4 e5 Nf3", -20)
+    review_store.save_review(game_id, _review(stub))
+    ev = review_store.move_evals(game_id)
+    nf3 = ev[("e4", "e5", "Nf3")]
+    assert nf3["best_san"] == "d4" and nf3["played_eval"] == "-0.20"
+    assert review_store.move_evals(4242) == {}

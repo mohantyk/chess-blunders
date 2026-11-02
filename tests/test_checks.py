@@ -408,3 +408,16 @@ def test_multipv_positions_lose_nothing(pgn, color, setup):
     narrow = review_game(tree, OneLineOutside(stub, multipv_positions(tree)), CFG)
     assert _summary(full) == _summary(narrow)
     assert full.findings or full.decisions   # the case exercises something
+
+
+def test_my_move_evals():
+    """Each of my mainline moves gets played-vs-best evals (White's view) and the loss."""
+    from core.checks import my_move_evals
+    tree = tree_of(BLIND_PGN)
+    stub = StubEngine(0).set("e4 e5 Nf3 Nc6 Bc4 Nf6", [("d4", 30)]).set(
+        "e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5", -150)
+    evals = {m["played_san"] + str(len(m["path_san"])): m for m in my_move_evals(tree, stub)}
+    assert len(evals) == 7                              # my 7 moves as White
+    ng5 = evals["Ng57"]
+    assert (ng5["best_san"], ng5["best_eval"], ng5["played_eval"]) == ("d4", "+0.30", "-1.50")
+    assert ng5["loss"] > 10
