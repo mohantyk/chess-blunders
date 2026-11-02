@@ -34,32 +34,9 @@ sudo apt install libcairo2
 
 ---
 
-### 2. Set DYLD_LIBRARY_PATH (macOS only)
+> **macOS:** you don't need to set `DYLD_LIBRARY_PATH`. `main.py` finds Homebrew's Cairo on its own. Setting it in your shell (or on the command line) makes macOS load Homebrew's copies of other libraries in place of Python's own, and the app crashes on start with "Bus error". If you added it to `~/.zshrc` or `~/.bash_profile` earlier, remove that line.
 
-On macOS, Python can't find the Cairo library unless you tell it where to look. You need to set the `DYLD_LIBRARY_PATH` environment variable to point to Homebrew's library folder.
-
-**Option A — permanent (recommended):** Add it to your shell profile so it's set automatically in every terminal session.
-
-If you use zsh (default on modern Macs):
-```bash
-echo 'export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH' >> ~/.zshrc
-source ~/.zshrc
-```
-
-If you use bash:
-```bash
-echo 'export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH' >> ~/.bash_profile
-source ~/.bash_profile
-```
-
-**Option B — per session:** Prefix it on the command line each time you run the app:
-```bash
-DYLD_LIBRARY_PATH=/opt/homebrew/lib python main.py
-```
-
----
-
-### 3. Install Python dependencies
+### 2. Install Python dependencies
 
 ```bash
 uv venv
@@ -69,7 +46,7 @@ uv sync
 
 ---
 
-### 4. Configure environment variables
+### 3. Configure environment variables
 
 Copy the example below into a file named `.env` in the project root and fill in your values:
 
@@ -92,7 +69,7 @@ LICHESS_TOKEN=lip_...
 
 The app never writes to Lichess, so no other scope is needed.
 
-### 4b. Set your Lichess username and study
+### 3b. Set your Lichess username and study
 
 In `config.yaml`:
 
@@ -103,7 +80,7 @@ lichess_study_id: YYeDmlVd               # the study all your games go into (ID 
 
 ---
 
-### 5. Run the app
+### 4. Run the app
 
 ```bash
 source .venv/bin/activate
