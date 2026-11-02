@@ -7,7 +7,8 @@ Two ways in, one pipeline (PRD F2):
   before; a multi-chapter paste shows the chapter list.
 
 The chapter list shows each chapter as New / Updated / Already imported.
-Ticked chapters are imported, then the wizard runs on each in turn.
+Ticked chapters are imported, then each goes through engine → Review → wizard
+in turn (see ui/flow.py). "Games" lists everything imported so far.
 """
 
 import queue
@@ -37,29 +38,17 @@ def _flag_moves(game, color: str, cfg: dict) -> list:
     return flagged or []
 
 
-def run_wizard_queue(master, queue: list) -> None:
-    """Run the wizard on each queued chapter one after another.
+def show_home(master) -> None:
+    """Replace whatever is on screen with a fresh Home screen."""
+    for widget in master.winfo_children():
+        widget.destroy()
+    HomeScreen(master).pack(fill="both", expand=True)
 
-    queue: list of dicts with game_id, flagged, user_color and label.
-    The last chapter ends on the normal "All moves reviewed" screen.
-    """
-    from ui.analyze import AnalyzeScreen
 
-    def start(i: int) -> None:
-        """Show the wizard for queue item ``i``."""
-        for widget in master.winfo_children():
-            widget.destroy()
-        item = queue[i]
-        is_last = i == len(queue) - 1
-        label = f"Chapter {i + 1} of {len(queue)} · {item['label']}" if len(queue) > 1 else None
-        AnalyzeScreen(
-            master, game_id=item["game_id"], flagged=item["flagged"],
-            user_color=item["user_color"], context_label=label,
-            on_done=None if is_last else (lambda: start(i + 1)),
-        ).pack(fill="both", expand=True)
-
-    if queue:
-        start(0)
+def start_chapters(master, queue: list) -> None:
+    """Engine → Review → wizard for each imported chapter, then back to Home."""
+    from ui.flow import run_chapter_queue
+    run_chapter_queue(master, queue, on_home=lambda: show_home(master))
 
 
 class HomeScreen(ctk.CTkFrame):
@@ -137,6 +126,9 @@ class HomeScreen(ctk.CTkFrame):
 
         nav = ctk.CTkFrame(self, fg_color="transparent")
         nav.grid(row=7, column=0, pady=(0, 14))
+        ctk.CTkButton(nav, text="📋 Games", width=110, fg_color="transparent",
+                      hover_color=("gray75", "gray30"),
+                      command=self._open_games).pack(side="left", padx=8)
         ctk.CTkButton(nav, text="📊 Patterns", width=110, fg_color="transparent",
                       hover_color=("gray75", "gray30"),
                       command=self._open_patterns).pack(side="left", padx=8)
@@ -242,19 +234,11 @@ class HomeScreen(ctk.CTkFrame):
             self._set_color(chapter.user_color)
         color = self._user_color
         flagged = _flag_moves(chapter.game, color, cfg)
-        if not flagged:
-            self._set_status(
-                "No annotated moves found. Add ? or ?? symbols or comments in Lichess before "
-                "exporting.", WARN_COLOR)
-            return
         game_id = import_chapter(chapter, user_color=color)
-        counts = {"blunder": 0, "mistake": 0, "missed_win": 0}
-        for m in flagged:
-            counts[m["flag_type"]] = counts.get(m["flag_type"], 0) + 1
-        self._set_status(f"Found {counts['blunder']} blunder(s), {counts['mistake']} mistake(s), "
-                         f"{counts['missed_win']} missed win(s)", OK_COLOR)
-        run_wizard_queue(self.master, [{"game_id": game_id, "flagged": flagged,
-                                        "user_color": color, "label": chapter.name}])
+        # Games without ?/?? moves still get the engine review; the wizard is
+        # simply skipped for them.
+        start_chapters(self.master, [{"game_id": game_id, "flagged": flagged,
+                                      "user_color": color, "label": chapter.name}])
 
     # ------------------------------------------------------------------ chapter list
 
@@ -309,7 +293,7 @@ class HomeScreen(ctk.CTkFrame):
                                                                         sticky="w", pady=6)
 
     def _on_import_selected(self):
-        """Import ticked chapters, then run the wizard on those with flagged moves."""
+        """Import ticked chapters, then engine → review → wizard for each in turn."""
         selected = [(ch, col.get().lower()) for ch, sel, col in self._chapter_rows if sel.get()]
         if not selected:
             self._set_status("Tick at least one chapter.", ERROR_COLOR)
@@ -320,25 +304,22 @@ class HomeScreen(ctk.CTkFrame):
             return
 
         cfg = load_config()
-        queue, no_flags = [], []
+        queue = []
         for ch, color in selected:
             game_id = import_chapter(ch, user_color=color)
-            flagged = _flag_moves(ch.game, color, cfg)
-            if flagged:
-                queue.append({"game_id": game_id, "flagged": flagged, "user_color": color,
-                              "label": ch.name})
-            else:
-                no_flags.append(ch.name)
-
-        if not queue:
-            self._render_chapters()
-            self._set_status(f"Imported {len(selected)} chapter(s). None has ? / ?? moves or "
-                             "comments on your moves, so there's nothing for the wizard.",
-                             WARN_COLOR)
-            return
-        run_wizard_queue(self.master, queue)
+            queue.append({"game_id": game_id, "flagged": _flag_moves(ch.game, color, cfg),
+                          "user_color": color, "label": ch.name})
+        start_chapters(self.master, queue)
 
     # ------------------------------------------------------------------ navigation
+
+    def _open_games(self):
+        """Switch to the list of imported games."""
+        from ui.games import GamesScreen
+        master = self.master
+        for widget in master.winfo_children():
+            widget.destroy()
+        GamesScreen(master, on_back=lambda: show_home(master)).pack(fill="both", expand=True)
 
     def _open_patterns(self):
         """Switch to the Patterns dashboard."""
@@ -356,6 +337,4 @@ class HomeScreen(ctk.CTkFrame):
 
     def _restore_home(self):
         """Come back to a fresh Home screen."""
-        for widget in self.master.winfo_children():
-            widget.destroy()
-        HomeScreen(self.master).pack(fill="both", expand=True)
+        show_home(self.master)
