@@ -6,12 +6,33 @@ import chess
 import chess.pgn
 
 
-BLUNDER_NAGS = {2}    # $2 = blunder (??)
-MISTAKE_NAGS = {4}    # $4 = mistake (?)
+BLUNDER_NAGS = {chess.pgn.NAG_BLUNDER}   # $4 = blunder (??)
+MISTAKE_NAGS = {chess.pgn.NAG_MISTAKE}   # $2 = mistake (?)
 MISSED_WIN_NAGS = {9}  # $9 = missed win (chess.com annotation)
 
 
+def read_games(pgn_text: str) -> list:
+    """Read every game (study chapter) in a PGN text.
+
+    A Lichess study export contains one game per chapter. Games that
+    python-chess can't make sense of (no headers and no moves) are skipped.
+    Returns a list of chess.pgn.Game objects, possibly empty.
+    """
+    games = []
+    stream = io.StringIO(pgn_text)
+    while True:
+        game = chess.pgn.read_game(stream)
+        if game is None:
+            break
+        if not game.headers.get("Event") and game.next() is None and not game.errors:
+            # Empty trailing game, e.g. from blank lines at the end.
+            continue
+        games.append(game)
+    return games
+
+
 def _lichess_url(fen: str) -> str:
+    """Return a Lichess analysis-board link for the given FEN."""
     return f"https://lichess.org/analysis/{urllib.parse.quote(fen, safe='')}"
 
 
@@ -36,16 +57,21 @@ def _strip_clocks(comment: str) -> str:
     return cleaned
 
 
-def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, winning_threshold: int = 150):
+def parse_pgn(pgn_text, user_color: str, missed_win_threshold: int = 150, winning_threshold: int = 150):
     """
-    Parse PGN text and return a list of flagged move dicts.
+    Parse one game and return its headers and a list of flagged move dicts.
 
+    pgn_text: PGN text (only the first game is used) or an already-parsed
+        chess.pgn.Game, e.g. one chapter from read_games().
     user_color: "white" or "black"
     Returns list of dicts with keys:
         move_number, move_side, move_san, fen, lichess_url,
         flag_type, annotation
     """
-    game = chess.pgn.read_game(io.StringIO(pgn_text))
+    if isinstance(pgn_text, chess.pgn.Game):
+        game = pgn_text
+    else:
+        game = chess.pgn.read_game(io.StringIO(pgn_text))
     if game is None:
         return None, []
 
@@ -114,7 +140,7 @@ def parse_pgn(pgn_text: str, user_color: str, missed_win_threshold: int = 150, w
 
 
 def get_game_metadata(headers):
-    """Extract common metadata from PGN headers."""
+    """Extract the games-table metadata (players, result, time control, date) from PGN headers."""
     return {
         "white": headers.get("White"),
         "black": headers.get("Black"),
