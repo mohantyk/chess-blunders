@@ -251,6 +251,17 @@ def positions_needed(tree: AnalysisTree) -> list:
     return list(dict.fromkeys(fens))
 
 
+def multipv_positions(tree: AnalysisTree) -> set:
+    """Positions where the checks look past the engine's best move.
+
+    Decision points (F6 top set) and positions before my only-move (□) glyphs.
+    Everywhere else the best line alone is enough, which is much faster.
+    """
+    fens = {dp.fen for dp in tree.decision_points}
+    fens |= {n.fen_before for n in tree.nodes if n.is_mine and ONLY_MOVE_GLYPH in n.move_glyphs}
+    return fens
+
+
 # ---------------------------------------------------------------- F5
 
 

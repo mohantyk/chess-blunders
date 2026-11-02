@@ -7,6 +7,9 @@
 * Results are cached in a separate SQLite file (``engine.cache_path``, default
   ``engine_cache.db``) keyed by position, search limit, MultiPV and engine, so
   transpositions and re-runs are free. Deleting the file is always safe.
+* MultiPV is expensive (about 5x slower at depth 15), so only positions that
+  need several lines get ``engine.multipv``; every other position is searched
+  with MultiPV 1. A cached MultiPV result also answers a MultiPV-1 request.
 * ``analyse_many`` takes a progress callback and is meant to run off the UI thread.
 """
 
@@ -263,27 +266,33 @@ class EngineService:
             return chess.engine.Limit(time=float(self.time_ms) / 1000)
         return chess.engine.Limit(depth=int(self.depth or 20))
 
-    def _cache_key(self, fen: str) -> str:
+    def _cache_key(self, fen: str, multipv: int) -> str:
         """Cache key: position + limit + MultiPV + engine name."""
         limit = f"t{self.time_ms}" if self.time_ms else f"d{self.depth}"
-        return f"{position_key(fen)}|{limit}|mpv{self.multipv}|{self.engine_id}"
+        return f"{position_key(fen)}|{limit}|mpv{multipv}|{self.engine_id}"
 
-    def analyse(self, fen: str) -> EngineResult:
-        """Analyse one position (cached)."""
+    def analyse(self, fen: str, multipv: Optional[int] = None) -> EngineResult:
+        """Analyse one position (cached).
+
+        multipv: lines wanted (default ``engine.multipv``). A cached result with
+        more lines is reused for a request for fewer.
+        """
         exact = terminal_result(fen)
         if exact is not None:
             self.stats["terminal"] += 1
             return exact
         self.open()
-        key = self._cache_key(fen)
-        row = self._db.execute("SELECT result_json FROM engine_cache WHERE key = ?",
-                               (key,)).fetchone()
-        if row:
-            self.stats["cache_hits"] += 1
-            return EngineResult.from_json(fen, row[0])
+        multipv = int(multipv or self.multipv)
+        for mpv in sorted({multipv, max(multipv, self.multipv)}):
+            row = self._db.execute("SELECT result_json FROM engine_cache WHERE key = ?",
+                                   (self._cache_key(fen, mpv),)).fetchone()
+            if row:
+                self.stats["cache_hits"] += 1
+                return EngineResult.from_json(fen, row[0])
+        key = self._cache_key(fen, multipv)
 
         try:
-            infos = self._engine.analyse(chess.Board(fen), self._limit(), multipv=self.multipv)
+            infos = self._engine.analyse(chess.Board(fen), self._limit(), multipv=multipv)
         except (chess.engine.EngineError, chess.engine.EngineTerminatedError) as exc:
             raise EngineUnavailable(f"The engine stopped while analysing: {exc}") from exc
         if isinstance(infos, dict):
@@ -293,20 +302,23 @@ class EngineService:
         result = EngineResult(fen=fen, lines=lines, depth=depth)
         self._db.execute(
             "INSERT OR REPLACE INTO engine_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (key, fen, self.depth if not self.time_ms else None, self.time_ms, self.multipv,
+            (key, fen, self.depth if not self.time_ms else None, self.time_ms, multipv,
              self.engine_id, result.to_json(), time.time()))
         self._db.commit()
         self.stats["analysed"] += 1
         return result
 
     def analyse_many(self, fens: Iterable[str],
-                     progress: Optional[Callable[[int, int], None]] = None) -> dict:
+                     progress: Optional[Callable[[int, int], None]] = None,
+                     multipv_fens: Optional[Iterable[str]] = None) -> dict:
         """Analyse many positions; returns {fen: EngineResult}.
 
-        Duplicates (including transpositions) are analysed once.
+        Positions in ``multipv_fens`` get ``engine.multipv`` lines; all others
+        get one line. Duplicates (including transpositions) are analysed once.
         ``progress(done, total)`` is called after each position.
         """
         unique = list(dict.fromkeys(fens))
+        wide = {position_key(f) for f in (multipv_fens or ())}
         out = {}
         by_key = {}
         total = len(unique)
@@ -316,7 +328,8 @@ class EngineService:
                 out[fen] = EngineResult(fen=fen, lines=by_key[key].lines,
                                         terminal=by_key[key].terminal, depth=by_key[key].depth)
             else:
-                out[fen] = by_key[key] = self.analyse(fen)
+                mpv = self.multipv if key in wide else 1
+                out[fen] = by_key[key] = self.analyse(fen, multipv=mpv)
             if progress:
                 progress(i, total)
         return out

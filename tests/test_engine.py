@@ -222,3 +222,24 @@ def test_real_stockfish(tmp_path):
         assert len(start.lines) == 2 and abs(start.cp_white) < 100
         mate1 = svc.analyse("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1")   # Rd8#
         assert mate1.san(mate1.best.move_uci) == "Rd8#" and mate1.mate_white == 1
+
+
+def test_multipv_only_where_requested(service):
+    """analyse_many uses MultiPV only for multipv_fens; one line elsewhere."""
+    board = chess.Board()
+    board.push_san("e4")
+    wide, narrow = chess.STARTING_FEN, board.fen()
+    out = service.analyse_many([wide, narrow], multipv_fens=[wide])
+    assert len(out[wide].lines) == 3 and len(out[narrow].lines) == 1
+
+
+def test_wide_cache_entry_answers_narrow_request(service):
+    """A cached MultiPV-3 result is reused for a MultiPV-1 request (not the reverse)."""
+    service.analyse(chess.STARTING_FEN, multipv=3)
+    again = service.analyse(chess.STARTING_FEN, multipv=1)
+    assert len(again.lines) == 3 and service.stats["analysed"] == 1
+    board = chess.Board()
+    board.push_san("d4")
+    service.analyse(board.fen(), multipv=1)
+    wide = service.analyse(board.fen(), multipv=3)
+    assert len(wide.lines) == 3 and service.stats["analysed"] == 3

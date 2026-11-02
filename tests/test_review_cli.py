@@ -16,7 +16,7 @@ CFG = dict(DEFAULTS["review"])
 
 def stub_analyser(stub):
     """Wrap a StubEngine as an ``analyse(fens, progress)`` function."""
-    def analyse(fens, progress=None):
+    def analyse(fens, progress=None, multipv_fens=None):
         """Evaluate each FEN with the stub, reporting progress."""
         out = {}
         for i, fen in enumerate(fens, 1):

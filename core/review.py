@@ -19,14 +19,16 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from core.analysis_tree import build_tree
-from core.checks import BAND_SYMBOLS, GameReview, fmt_clock, positions_needed, review_game
+from core.checks import (
+    BAND_SYMBOLS, GameReview, fmt_clock, multipv_positions, positions_needed, review_game,
+)
 from core.config import load_config
 from core.engine import EngineService, EngineUnavailable
 from core.pgn_parser import read_games
 from core.study_import import infer_color
 
-# analyse(fens, progress) -> {fen: EngineResult}
-Analyser = Callable[[list, Optional[Callable[[int, int], None]]], dict]
+# analyse(fens, progress, multipv_fens) -> {fen: EngineResult}
+Analyser = Callable[..., dict]
 
 
 @dataclass
@@ -72,7 +74,7 @@ def review_pgn(pgn_text: str, review_cfg: dict, analyse: Analyser, username: Opt
         fens = positions_needed(tree)
         started = time.time()
         cb = (lambda d, t, _n=name: progress(_n, d, t)) if progress else None
-        results = analyse(fens, cb)
+        results = analyse(fens, cb, multipv_positions(tree))
         review = review_game(tree, results.__getitem__, review_cfg)
         out.append(ChapterReview(number, name, my_color, review, positions=len(fens),
                                  seconds=time.time() - started))

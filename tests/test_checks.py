@@ -364,3 +364,47 @@ def test_positions_needed_covers_every_lookup(sample_games):
         review_game(tree, stub, CFG)
         needed = set(positions_needed(tree))
         assert set(stub.calls) <= needed
+
+
+# ---------------------------------------------------------------- MultiPV only where needed
+
+
+class OneLineOutside:
+    """Wraps a stub so positions outside ``wide`` only get the best line (like the CLI)."""
+
+    def __init__(self, stub, wide):
+        """Remember the stub and the positions allowed several lines."""
+        from core.engine import position_key
+        self.stub, self.key = stub, position_key
+        self.wide = {position_key(f) for f in wide}
+
+    def __call__(self, fen):
+        """Stub result, truncated to one line outside the MultiPV positions."""
+        res = self.stub(fen)
+        if self.key(fen) not in self.wide:
+            res.lines = res.lines[:1]
+        return res
+
+
+def _summary(review):
+    """Comparable summary of a review: findings and decision outcomes."""
+    return ([(f.type, f.label, f.best_move_san, f.answer_text) for f in review.findings],
+            [(d.top_set, d.hit, d.post_hit, d.chose_best) for d in review.decisions])
+
+
+@pytest.mark.parametrize("pgn,color,setup", [
+    (DP_PGN, "white", lambda s: s.set("e4 e5", [("d4", 60), ("Nf3", 55), ("Bc4", 0)])),
+    (DP_PGN, "white", lambda s: s.set("e4 e5", [("d4", 100), ("Nf3", -50)])),
+    ('[White "me"]\n[Black "them"]\n\n1. e4?! e5 2. Nf3! Nc6 3. Bb5$7 a6 4. Ba4? Nf6 *', "white",
+     lambda s: s.set("e4 e5 Nf3 Nc6", [("Bb5", 40), ("Bc4", 35)]).set("", [("e4", 30), ("d4", 25)])),
+])
+def test_multipv_positions_lose_nothing(pgn, color, setup):
+    """Giving one line outside multipv_positions changes no finding or decision."""
+    from core.checks import multipv_positions
+    tree = tree_of(pgn, color)
+    stub = StubEngine(0)
+    setup(stub)
+    full = review_game(tree, stub, CFG)
+    narrow = review_game(tree, OneLineOutside(stub, multipv_positions(tree)), CFG)
+    assert _summary(full) == _summary(narrow)
+    assert full.findings or full.decisions   # the case exercises something
