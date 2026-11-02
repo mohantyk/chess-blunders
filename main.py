@@ -43,6 +43,13 @@ def main():
 
     HomeScreen(app).pack(fill="both", expand=True)
 
+    # When launched from a terminal or another process, macOS may open the
+    # window behind everything else. Raise it once at start-up.
+    app.lift()
+    app.attributes("-topmost", True)
+    app.after(500, lambda: app.attributes("-topmost", False))
+    app.focus_force()
+
     app.mainloop()
 
 
