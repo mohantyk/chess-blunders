@@ -14,6 +14,8 @@ primary_themes:
 - Endgame technique
 - Opening prep gap
 - Hanging Pawn
+- Evaluation
+- Hanging Piece
 secondary_themes:
 - None
 - Time pressure
@@ -21,6 +23,7 @@ secondary_themes:
 - Endgame technique
 - King safety
 - Opponent surprise
+- Calculation
 training_prescriptions:
 - Tactics puzzles (general)
 - Fork puzzles
