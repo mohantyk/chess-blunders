@@ -241,13 +241,22 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._fix_entry.delete(0, "end")
         self._presc_var.set(self._cfg["training_prescriptions"][0])
         self._notes_box.delete("1.0", "end")
-        if ann:
-            self._notes_box.insert("1.0", ann)
+        notes = move_data.get("notes_prefill", ann)   # comment + engine summary (F14)
+        if notes:
+            self._notes_box.insert("1.0", notes)
         self._validation_label.configure(text="")
         self._results_frame.grid_forget()
 
-        # LLM pre-fill (async, if annotation exists)
-        if ann:
+        # Engine pre-fill (PRD F14): layer from the candidate checks replaces the
+        # LLM guess; "Rushed (time available)" when the move was played too fast.
+        engine_layer = move_data.get("layer_prefill")
+        if engine_layer:
+            self._set_layer(engine_layer)
+        if move_data.get("secondary_prefill"):
+            self._secondary_var.set(move_data["secondary_prefill"])
+
+        # LLM pre-fill (async) only for moves with a comment and no engine layer.
+        if ann and not engine_layer:
             threading.Thread(target=self._prefill_from_llm, args=(ann,), daemon=True).start()
 
     # ------------------------------------------------------------------ layer / step
@@ -315,6 +324,7 @@ class AnalyzeScreen(ctk.CTkFrame):
     # ------------------------------------------------------------------ LLM pre-fill
 
     def _prefill_from_llm(self, annotation: str):
+        """Ask the LLM to guess step and layer from my comment (background thread)."""
         from core.llm import prefill_classification
         result = prefill_classification(annotation)
         if not result:
@@ -378,9 +388,16 @@ class AnalyzeScreen(ctk.CTkFrame):
             "one_sentence_fix": self._fix_entry.get().strip() or None,
             "training_prescription": self._presc_var.get(),
             "notes": self._notes_box.get("1.0", "end").strip() or None,
+            "source": move_data.get("source", "manual"),
+            "finding_id": move_data.get("primary_finding_id"),
+            "time_spent_s": move_data.get("time_spent_s"),
+            "clock_remaining_s": move_data.get("clock_remaining_s"),
         }
 
         blunder_id = insert_blunder(self._game_id, blunder_data)
+        if move_data.get("finding_ids"):
+            from core.wizard_queue import mark_logged
+            mark_logged(move_data["finding_ids"], blunder_id)
 
         # Show loading state
         self._results_frame.grid(row=self._row_counter, column=0, sticky="ew", padx=8, pady=8,

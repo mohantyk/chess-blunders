@@ -205,6 +205,7 @@ class GameReview:
     rushed: list
     glyph_mismatches: list
     findings: list                 # every Finding, board order
+    move_evals: list = field(default_factory=list)  # my mainline moves: played vs best
 
     @property
     def longest_thinks(self) -> list:
@@ -604,4 +605,28 @@ def review_game(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> GameReview:
 
     return GameReview(tree=tree, eval_checks=eval_checks, decisions=decisions, lines=lines,
                       blind_spots=blind, times=times, time_control=tc, rushed=rushed,
-                      glyph_mismatches=glyphs, findings=findings)
+                      glyph_mismatches=glyphs, findings=findings,
+                      move_evals=my_move_evals(tree, ev))
+
+
+def my_move_evals(tree: AnalysisTree, ev: Evaluator) -> list:
+    """For each of my mainline moves: the move played and the engine's best, with evals.
+
+    Evals are from White's point of view (like Lichess), e.g. "+2.10" / "#3".
+    Used for the one-line engine summary in the wizard's notes.
+    """
+    out = []
+    for node in tree.mainline:
+        if not node.is_mine:
+            continue
+        loss, before = move_loss(node, ev)
+        after = ev(node.fen_after)
+        out.append({
+            "path_san": node.path_san,
+            "played_san": node.san,
+            "played_eval": format_eval(after),
+            "best_san": before.san(before.best.move_uci) if before.best else None,
+            "best_eval": format_eval(before),
+            "loss": round(loss, 1),
+        })
+    return out

@@ -5,7 +5,8 @@
 * ``open_review`` shows a game's review, running the engine first when the game
   was never analysed or its analysis changed (or when forced).
 * ``run_chapter_queue`` is the import flow: for each chapter, engine → review →
-  wizard (if it has ?/?? moves) → next chapter.
+  wizard (queue built from ?/?? moves *and* engine findings, see
+  core/wizard_queue.py) → next chapter.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import customtkinter as ctk
 
 from core.engine import EngineUnavailable
 from core.run_review import ReviewCancelled, needs_run, run_game_review
+from core.wizard_queue import build_queue
 
 # Tests set this to a fake engine factory; None = real engine from config.yaml.
 ENGINE_FACTORY = None
@@ -100,16 +102,22 @@ class EngineRunScreen(ctk.CTkFrame):
 
 def open_review(master, game_id: int, on_back: Callable[[], None],
                 on_continue: Optional[Callable[[], None]] = None,
-                continue_label: str = "Continue to wizard →",
+                continue_label="Continue to wizard →",
                 force_run: bool = False, title: Optional[str] = None) -> None:
-    """Show a game's review, running the engine first if needed (or ``force_run``)."""
+    """Show a game's review, running the engine first if needed (or ``force_run``).
+
+    continue_label: text for the Continue button, or a callable evaluated after
+    the engine run that returns the text (None = no button).
+    """
     from ui.review import ReviewScreen
 
     def show(note: Optional[str] = None) -> None:
         """Replace the current screen with the review."""
+        label = continue_label() if callable(continue_label) else continue_label
         _clear(master)
-        ReviewScreen(master, game_id, on_back=on_back, on_continue=on_continue,
-                     continue_label=continue_label, note=note,
+        ReviewScreen(master, game_id, on_back=on_back,
+                     on_continue=on_continue if label else None,
+                     continue_label=label or "", note=note,
                      on_rerun=lambda: open_review(master, game_id, on_back, on_continue,
                                                   continue_label, force_run=True,
                                                   title=title)).pack(fill="both", expand=True)
@@ -122,13 +130,21 @@ def open_review(master, game_id: int, on_back: Callable[[], None],
         show()
 
 
+def open_wizard(master, game_id: int, user_color: str, queue_items: list,
+                on_done: Optional[Callable[[], None]], context_label: Optional[str] = None) -> None:
+    """Show the wizard for a game's queue; ``on_done`` replaces its final screen if given."""
+    from ui.analyze import AnalyzeScreen
+    _clear(master)
+    AnalyzeScreen(master, game_id=game_id, flagged=queue_items, user_color=user_color,
+                  context_label=context_label, on_done=on_done).pack(fill="both", expand=True)
+
+
 def run_chapter_queue(master, queue_items: list, on_home: Callable[[], None]) -> None:
     """Import flow: engine → review → wizard for each chapter, one after another.
 
-    queue_items: dicts with game_id, flagged, user_color and label.
+    queue_items: dicts with game_id, user_color and label. Each chapter's wizard
+    queue is built after its engine run, so engine findings are included.
     """
-    from ui.analyze import AnalyzeScreen
-
     def start(i: int) -> None:
         """Review chapter ``i``; its Continue button leads to the wizard / next chapter."""
         if i >= len(queue_items):
@@ -138,22 +154,25 @@ def run_chapter_queue(master, queue_items: list, on_home: Callable[[], None]) ->
         is_last = i == len(queue_items) - 1
         prefix = f"Chapter {i + 1} of {len(queue_items)} · " if len(queue_items) > 1 else ""
 
+        def label() -> str:
+            """Button text, decided once the engine has run."""
+            item["queue"] = build_queue(item["game_id"])
+            if item["queue"]:
+                return "Continue to wizard →"
+            return "Next chapter →" if not is_last else "Done →"
+
         def to_wizard() -> None:
-            """Open the wizard for this chapter (or move on if nothing is flagged)."""
-            if not item["flagged"]:
+            """Open the wizard for this chapter (or move on if nothing is queued)."""
+            wizard_items = item.get("queue")
+            if wizard_items is None:
+                wizard_items = build_queue(item["game_id"])
+            if not wizard_items:
                 start(i + 1)
                 return
-            _clear(master)
-            AnalyzeScreen(master, game_id=item["game_id"], flagged=item["flagged"],
-                          user_color=item["user_color"],
-                          context_label=(prefix + item["label"]) if prefix else None,
-                          on_done=None if is_last else (lambda: start(i + 1))).pack(
-                fill="both", expand=True)
+            open_wizard(master, item["game_id"], item["user_color"], wizard_items,
+                        on_done=None if is_last else (lambda: start(i + 1)),
+                        context_label=(prefix + item["label"]) if prefix else None)
 
-        if item["flagged"]:
-            label = "Continue to wizard →"
-        else:
-            label = "Next chapter →" if not is_last else "Done →"
         open_review(master, item["game_id"], on_back=on_home, on_continue=to_wizard,
                     continue_label=label, title=f"{prefix}{item['label']}")
 

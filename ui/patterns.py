@@ -1,4 +1,4 @@
-"""Patterns dashboard — blunder analysis charts."""
+"""Patterns dashboard — wizard-entry charts plus analysis-skill metrics (PRD F15)."""
 
 import collections
 import customtkinter as ctk
@@ -64,8 +64,10 @@ class PatternsScreen(ctk.CTkFrame):
         self.rowconfigure(1, weight=1)
         self._build_header()
 
+        from core import skill_metrics
         rows = _load_data()
-        if not rows:
+        self._skill_games = skill_metrics.per_game()
+        if not rows and not self._skill_games:
             ctk.CTkLabel(self, text="No blunders logged yet.\nAnalyse some games first.",
                          text_color="gray", font=ctk.CTkFont(size=14), justify="center").grid(row=1, column=0)
         else:
@@ -84,19 +86,97 @@ class PatternsScreen(ctk.CTkFrame):
         scroll.columnconfigure(0, weight=1)
         scroll.columnconfigure(1, weight=1)
 
-        # ── Row 0: Step breakdown + Theme breakdown ──────────────────────────
-        self._chart_step(scroll, rows, grid=(0, 0))
-        self._chart_theme(scroll, rows, grid=(0, 1))
+        # ── Row 0: Analysis skill (engine checks on my own analysis) ─────────
+        if self._skill_games:
+            self._skill_section(scroll, grid=(0, 0))
+        if not rows:
+            ctk.CTkLabel(scroll, text="No wizard entries yet — the charts below appear once "
+                         "you've classified some mistakes.", text_color="gray").grid(
+                row=1, column=0, columnspan=2, pady=12)
+            return
 
-        # ── Row 1: Step × Layer heatmap + Training prescriptions ─────────────
-        self._chart_heatmap(scroll, rows, grid=(1, 0))
-        self._chart_prescription(scroll, rows, grid=(1, 1))
+        # ── Row 1+: wizard entries ────────────────────────────────────────────
+        self._chart_step(scroll, rows, grid=(1, 0))
+        self._chart_theme(scroll, rows, grid=(1, 1))
+        self._chart_heatmap(scroll, rows, grid=(2, 0))
+        self._chart_prescription(scroll, rows, grid=(2, 1))
+        self._chart_trend(scroll, rows, grid=(3, 0))
+        self._summary_bar(scroll, rows, grid=(4, 0))
 
-        # ── Row 2: Trend over time (full width) ───────────────────────────────
-        self._chart_trend(scroll, rows, grid=(2, 0))
+    # ── analysis skill (F15) ─────────────────────────────────────────────────
 
-        # ── Row 3: Summary stats ──────────────────────────────────────────────
-        self._summary_bar(scroll, rows, grid=(3, 0))
+    def _skill_section(self, parent, grid):
+        """Totals across analysed games ("x / y") and per-game trends."""
+        from core import skill_metrics as sm
+
+        games = self._skill_games
+        frame = ctk.CTkFrame(parent, fg_color=CHART_BG, corner_radius=8)
+        frame.grid(row=grid[0], column=grid[1], columnspan=2, padx=6, pady=6, sticky="ew")
+        ctk.CTkLabel(frame, text=f"Analysis skill — {len(games)} game(s) checked by the engine",
+                     font=ctk.CTkFont(size=15, weight="bold"), text_color=TEXT_COLOR).pack(
+            anchor="w", padx=14, pady=(10, 4))
+
+        tot = sm.totals(games)
+        last = games[-1]["metrics"]
+        table = ctk.CTkFrame(frame, fg_color="transparent")
+        table.pack(fill="x", padx=14, pady=(0, 6))
+        for c, head in enumerate(("", "All games", f"Latest ({games[-1]['label']})")):
+            ctk.CTkLabel(table, text=head, text_color="gray", anchor="w",
+                         font=ctk.CTkFont(size=11)).grid(row=0, column=c, sticky="w", padx=(0, 24))
+        self.skill_rows = {}
+        for r, (key, label, kind) in enumerate(sm.METRICS, start=1):
+            if kind == "ratio":
+                total_txt, last_txt = sm.fmt_ratio(tot[key]), sm.fmt_ratio(last[key])
+            else:
+                total_txt = f"{tot[key]['total']} ({tot[key]['per_game']:.1f} per game)"
+                last_txt = str(last[key])
+            self.skill_rows[key] = (total_txt, last_txt)
+            for c, txt in enumerate((label, total_txt, last_txt)):
+                ctk.CTkLabel(table, text=txt, anchor="w", text_color=TEXT_COLOR,
+                             font=ctk.CTkFont(size=12)).grid(row=r, column=c, sticky="w",
+                                                            padx=(0, 24))
+        if all(g["metrics"]["candidate_hit_rate"][1] == 0 for g in games):
+            ctk.CTkLabel(frame, text="Candidate stats need 'otb' tags on your in-game "
+                         "candidates; until then they show n/a (unknown, not misses).",
+                         text_color="gray", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=14)
+
+        if len(games) < 2:
+            ctk.CTkLabel(frame, text="Trends appear once two or more games are analysed.",
+                         text_color="gray", font=ctk.CTkFont(size=12)).pack(pady=(4, 12))
+            return
+        labels = [g["label"] for g in games]
+        charts = ctk.CTkFrame(frame, fg_color="transparent")
+        charts.pack(fill="x", padx=6, pady=(0, 8))
+        charts.columnconfigure((0, 1), weight=1)
+
+        fig, ax = _make_figure(figsize=(6, 3))
+        ax.set_ylim(0, 105)
+        for i, key in enumerate(("candidate_hit_rate", "chose_best_rate", "eval_accuracy",
+                                 "line_soundness")):
+            values = [sm.rate(g["metrics"][key]) for g in games]
+            if all(v is None for v in values):
+                continue
+            ax.plot(labels, [float("nan") if v is None else v for v in values], marker="o",
+                    label=dict((k, l) for k, l, _ in sm.METRICS)[key], color=ACCENT_COLORS[i])
+        ax.set_title("Rates per game (%)", color=TEXT_COLOR, fontsize=10)
+        ax.legend(framealpha=0, labelcolor=TEXT_COLOR, fontsize=7)
+        ax.tick_params(axis="x", rotation=30, labelsize=7)
+        fig.tight_layout()
+        left = ctk.CTkFrame(charts, fg_color="transparent")
+        left.grid(row=0, column=0, sticky="nsew")
+        _embed(fig, left)
+
+        fig, ax = _make_figure(figsize=(6, 3))
+        for i, key in enumerate(sm.COUNT_KEYS):
+            ax.plot(labels, [g["metrics"][key] for g in games], marker="o",
+                    label=dict((k, l) for k, l, _ in sm.METRICS)[key], color=ACCENT_COLORS[i + 1])
+        ax.set_title("Counts per game", color=TEXT_COLOR, fontsize=10)
+        ax.legend(framealpha=0, labelcolor=TEXT_COLOR, fontsize=7)
+        ax.tick_params(axis="x", rotation=30, labelsize=7)
+        fig.tight_layout()
+        right = ctk.CTkFrame(charts, fg_color="transparent")
+        right.grid(row=0, column=1, sticky="nsew")
+        _embed(fig, right)
 
     # ── individual charts ────────────────────────────────────────────────────
 

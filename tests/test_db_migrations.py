@@ -144,3 +144,16 @@ def test_new_wizard_entries_default_to_manual(tmp_db):
                                   "fen": "f", "flag_type": "mistake"})
     row = _rows(f"SELECT source, finding_id FROM blunders WHERE id = {bid}")[0]
     assert row == {"source": "manual", "finding_id": None}
+
+
+def test_m3_database_gets_move_evals_column(tmp_db, sample_games):
+    """An M3 database (analysis_runs without move_evals_json) is backed up, then altered."""
+    _make_legacy_db(tmp_db, sample_games)
+    db.init_db()
+    conn = db.get_connection()
+    conn.execute("ALTER TABLE analysis_runs DROP COLUMN move_evals_json")
+    conn.commit()
+    conn.close()
+    db.init_db()
+    assert len(glob.glob(tmp_db + ".bak-*")) == 2
+    assert "move_evals_json" in {r["name"] for r in _rows("PRAGMA table_info(analysis_runs)")}

@@ -148,6 +148,19 @@ Re-open any game later from **📋 Games** on the home screen. The engine only r
 
 ### Step 4 — Work through the review wizard
 
+**Which moves come up:**
+- your moves marked `?` or `??`;
+- moves where the engine found something about the move itself: your in-game candidates missed its best move, you picked the worse of your candidates, or an unannotated move cost a lot (a blind spot).
+
+Holes in your analysis lines aren't game mistakes, so they stay on the Review screen and in the metrics. Moves you've already saved in the wizard don't come up again, and neither do findings you dismissed.
+
+**What's filled in for you** (you can change it all):
+- **Did you see it?** "Didn't see it" if the engine's best wasn't among your `otb` candidates; "Saw it, got it wrong" if you considered it and played something worse. Otherwise the LLM's guess from your comment is used, as before.
+- **Secondary theme:** "Rushed (time available)" when you played the move quickly with plenty of time left.
+- **Notes:** your comment plus an engine line, e.g. "Engine: best was Qe6 (+2.10); you played Rff1 (-3.40)."
+
+Thinking step, primary theme, fix and prescription stay yours to choose; the engine can't tell those apart reliably. Saving also records the time you spent and the clock left, and links the entry to the engine finding.
+
 For each flagged move you will see:
 
 - The **board position** at the moment of the mistake, with the move number, side, and flag type shown above it.
@@ -177,7 +190,14 @@ After saving, the app automatically fetches relevant Lichess puzzles and (if con
 
 Once you have logged several games, click **📊 Patterns** on the home screen to open the patterns dashboard.
 
-The dashboard shows:
+At the top, **Analysis skill** shows how good your own analysis is, across all games checked by the engine and for the latest game:
+- candidate hit rate, chose-best rate and post-game discovery rate;
+- eval accuracy, missing evals and line soundness;
+- opponent-reply misses, blind spots and rushed mistakes.
+
+Totals are shown as counts like "3 / 7", so small samples stay honest. With two or more games you also get trend charts. Dismissed findings count as if the check had passed.
+
+The wizard-entry charts below show:
 
 - **Thinking step breakdown** — which step fails most often
 - **Theme frequency** — your most common mistake themes
@@ -238,6 +258,8 @@ chess-patterns/
 │   ├── review_store.py   # engine runs, decision points and findings in blunders.db
 │   ├── review_nav.py     # Review-screen logic: navigation, move list, finding placement
 │   ├── run_review.py     # run the engine checks on a stored game (used by the UI)
+│   ├── wizard_queue.py   # wizard queue + pre-fill from glyphs and engine findings
+│   ├── skill_metrics.py  # analysis-skill metrics across games (Patterns screen)
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
 │   ├── db.py             # SQLite read/write
 │   ├── config.py         # config.yaml loading and saving
