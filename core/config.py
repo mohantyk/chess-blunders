@@ -41,7 +41,7 @@ DEFAULTS = {
         "command": ["stockfish"],
         "threads": 4,
         "hash_mb": 512,
-        "depth": 20,
+        "depth": 15,
         "time_ms": None,
         "multipv": 3,
         "cache_path": "engine_cache.db",

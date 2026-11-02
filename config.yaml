@@ -57,7 +57,7 @@ engine:
   command: ["stockfish"]   # e.g. ["ssh", "mac-mini.local", "/opt/homebrew/bin/stockfish"]
   threads: 4
   hash_mb: 512
-  depth: 20
+  depth: 15
   time_ms: null            # set (e.g. 1000) to use time per position instead of depth
   multipv: 3
   cache_path: engine_cache.db
