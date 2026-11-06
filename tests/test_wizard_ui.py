@@ -260,3 +260,30 @@ def test_prefetch_with_engine_and_no_llm_shows_error(game_id, ui_env):
     wiz._on_skip()
     pump(ui_env, until=lambda: 1 in wiz._applied, timeout=20)
     assert wiz._captions["secondary_theme"].cget("text") == "· from engine"   # Rushed fact
+
+
+def test_review_starts_prefill_and_wizard_reuses_it(game_id, ui_env):
+    """The Review screen starts the pre-fill; the wizard picks up the finished job at once."""
+    from core import prefetch
+    gid, _ = game_id
+    review = ReviewScreen(ui_env, gid, on_back=lambda: None, on_continue=lambda: None)
+    review.pack(fill="both", expand=True)
+    pump(ui_env)
+    job = prefetch.get(gid)
+    assert job is not None
+    job.thread.join(20)
+    assert job.done
+    review.destroy()
+    wiz = _wizard(ui_env, gid)
+    assert wiz._job is job
+    assert 0 in wiz._applied                               # applied on open, no waiting
+    assert wiz._captions["step"].cget("text") == "· from engine"
+
+
+def test_review_without_wizard_starts_no_prefill(game_id, ui_env):
+    """A Review screen with no Continue button doesn't start a job."""
+    from core import prefetch
+    gid, _ = game_id
+    ReviewScreen(ui_env, gid, on_back=lambda: None).pack(fill="both", expand=True)
+    pump(ui_env)
+    assert prefetch.get(gid) is None

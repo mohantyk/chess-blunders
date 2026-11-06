@@ -100,6 +100,7 @@ class ReviewScreen(ctk.CTkFrame):
         self._bind_keys()
         self.refresh_findings()
         self.refresh_position()
+        self._start_prefill()
 
     # ------------------------------------------------------------------ layout
 
@@ -220,6 +221,23 @@ class ReviewScreen(ctk.CTkFrame):
             if seg.node is not None:
                 self._node_ranges[id(seg.node)] = (start, box.index("end-1c"))
         box.configure(state="disabled")
+
+    def _start_prefill(self) -> None:
+        """When the wizard follows this screen, start its engine + AI pre-fill now.
+
+        Suggestions then compute in the background while I read the findings,
+        and the wizard picks up the same job (core.prefetch). Never blocks or
+        breaks the Review screen.
+        """
+        if self._on_continue is None:
+            return
+        try:
+            from core import prefetch
+            from core.wizard_queue import build_queue
+            from ui import flow
+            prefetch.start(self.game_id, build_queue(self.game_id), flow.ENGINE_FACTORY)
+        except Exception as exc:  # the wizard starts its own job if this failed
+            print(f"[review] pre-fill not started: {exc}")
 
     # ------------------------------------------------------------------ keys
 
