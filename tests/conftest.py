@@ -89,6 +89,8 @@ def ui_env(tk_app, tmp_db, tmp_path, monkeypatch):
     monkeypatch.setattr(run_review, "load_config", lambda: cfg)
     monkeypatch.setattr(flow, "ENGINE_FACTORY", FakeEngine)
     yield tk_app
+    from core import prefetch
+    prefetch.cancel_all(wait=10)        # no pre-fill thread may outlive the test
     for widget in tk_app.winfo_children():
         widget.destroy()
     tk_app.update()

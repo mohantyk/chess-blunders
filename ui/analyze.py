@@ -50,21 +50,22 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._index = 0
         self._cfg = load_config()
         self._board_image_ref = None  # keep reference to prevent GC
-        # Pre-fill state (PRD F14): suggestions by queue index, filled by a worker thread
-        # and applied on the UI thread by _poll_suggestions.
+        # Pre-fill state (PRD F14): suggestions come from the game's background job
+        # (core.prefetch) and are applied on the UI thread by _poll_suggestions.
+        # _suggestions holds ones set directly (by queue index), which take precedence.
         self._captions = {}
+        self._job = None
         self._suggestions = {}
         self._applied = set()
         self._touched = set()
         self._applying = False
         self._closing = False
-        self._prefetch_done = False
         self._poll_id = None
         self._model = model_label()
         self._build_ui()
         self._track_edits()
+        self._start_prefetch()        # before the first move, so ready suggestions apply at once
         self._load_move()
-        self._start_prefetch()
 
     # ------------------------------------------------------------------ layout
 
@@ -350,54 +351,36 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._set_caption(field, None)
 
     def _start_prefetch(self):
-        """Compute suggestions for the whole queue on a worker thread; poll for them here."""
+        """Use the game's background pre-fill job (usually started by the Review screen).
+
+        ``core.prefetch.start`` returns the running job when it already covers this
+        queue, so suggestions computed while I read the findings are ready here.
+        Polling applies them on the UI thread.
+        """
         if not self._flagged:
             return
-        threading.Thread(target=self._prefetch_suggestions, daemon=True).start()
+        from core import prefetch
+        from ui import flow
+        self._job = prefetch.start(self._game_id, self._flagged, flow.ENGINE_FACTORY)
         self._poll_id = self.after(200, self._poll_suggestions)
 
-    def _prefetch_suggestions(self):
-        """Worker thread: engine facts + LLM suggestion for each queued move, in order.
-
-        Only stores results; the UI thread applies them (Tk isn't thread-safe).
-        """
-        from core.prefill import Suggestion, suggest
-        from core.run_review import open_engine
-        from ui import flow
-
-        svc, ev, engine_err = None, None, None
-        try:
-            svc = open_engine(flow.ENGINE_FACTORY)
-            ev = svc.analyse
-        except Exception as exc:  # no Stockfish: the LLM still gets the comment + summary
-            engine_err = f"engine unavailable ({exc})"
-        try:
-            for i, item in enumerate(list(self._flagged)):
-                if self._closing:
-                    return
-                try:
-                    sug = suggest(item, self._cfg, ev=ev)
-                except Exception as exc:
-                    sug = Suggestion(error=f"pre-fill failed ({exc})")
-                if engine_err:
-                    sug.error = "; ".join(x for x in (engine_err, sug.error) if x)
-                self._suggestions[i] = sug
-        finally:
-            if svc is not None:
-                svc.close()
-            self._prefetch_done = True
+    def _suggestion(self, index: int):
+        """The Suggestion for queue position ``index`` (set directly, or from the job), or None."""
+        if index in self._suggestions:
+            return self._suggestions[index]
+        if self._job is not None and index < len(self._flagged):
+            return self._job.result(self._flagged[index])
+        return None
 
     def _poll_suggestions(self):
         """UI thread: apply the current move's suggestion once it's ready; keep polling."""
         self._poll_id = None
-        if self._closing:
-            return
-        if self._index in self._suggestions and self._index not in self._applied \
-                and self._index < len(self._flagged):
+        if self._closing or self._index >= len(self._flagged):
+            return                                  # screen gone / wizard finished
+        if self._index not in self._applied and self._suggestion(self._index) is not None:
             self._apply_suggestion()
-        if self._index >= len(self._flagged):
-            return                                  # wizard finished
-        if not (self._prefetch_done and self._index in self._applied):
+        job_done = self._job is None or self._job.done or self._job.cancelled
+        if not (job_done and self._index in self._applied):
             self._poll_id = self.after(250, self._poll_suggestions)
 
     def _apply_suggestion(self):
@@ -407,7 +390,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         """
         if self._index >= len(self._flagged):
             return
-        sug = self._suggestions.get(self._index)
+        sug = self._suggestion(self._index)
         if sug is None:
             for field, caption in self._captions.items():
                 if field not in self._touched and not caption.cget("text"):
@@ -461,7 +444,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._ai_note.grid(row=self._ai_note_row, column=0, sticky="ew", padx=8, pady=(12, 0))
 
     def destroy(self):
-        """Stop the pre-fill worker and polling, then destroy the screen."""
+        """Stop polling and destroy the screen (the game's pre-fill job keeps running)."""
         self._closing = True
         if self._poll_id is not None:
             try:

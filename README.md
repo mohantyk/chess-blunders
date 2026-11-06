@@ -154,7 +154,7 @@ Re-open any game later from **📋 Games** on the home screen. The engine only r
 
 Holes in your analysis lines aren't game mistakes, so they stay on the Review screen and in the metrics. Moves you've already saved in the wizard don't come up again, and neither do findings you dismissed.
 
-**What's filled in for you** (you can change it all). When the wizard opens, it works out every queued move in the background, so the next one is usually ready:
+**What's filled in for you** (you can change it all). The work starts in the background as soon as the Review screen opens, so while you read the findings the suggestions are being prepared and the wizard usually opens with them ready:
 - **Facts from the engine:** "Didn't see it" if the engine's best wasn't among your `otb` candidates, "Saw it, got it wrong" if you considered it and played something worse; "Rushed (time available)" as secondary theme when you played quickly with plenty of time left. These are never changed by the AI.
 - **Engine guesses:** the engine looks at the position: was the best move your own check or tactic (fork, pin, skewer, discovered attack, mate, a free piece)? Did your move allow such a tactic, and was that threat already there before your move? From that it guesses the **thinking step**, the **primary theme** and the **training prescription**.
 - **AI suggestions:** the LLM gets those facts, your comment and the moves you considered, and fills in every field, including a **one-sentence fix**. It keeps the engine's guesses unless your comment points elsewhere.
@@ -258,6 +258,7 @@ chess-patterns/
 │   ├── wizard_queue.py   # wizard queue from glyphs and engine findings
 │   ├── position_facts.py # engine facts about a move (tactics, threats) + rule guesses
 │   ├── prefill.py        # wizard pre-fill: engine facts + rule guesses + one LLM call
+│   ├── prefetch.py       # background pre-fill job per game, started from the Review screen
 │   ├── prompts/          # LLM system prompts (wizard_prefill.md, recommendation.md)
 │   ├── skill_metrics.py  # analysis-skill metrics across games (Patterns screen)
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
