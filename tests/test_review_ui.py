@@ -83,7 +83,7 @@ def test_hints_shown_answers_hidden(saved_game, ui_env):
     opp = _finding(screen, "line_break_opp")
     assert opp["hint_text"] in texts and opp["answer_text"] not in texts
     moves = screen.moves.get("1.0", "end")
-    assert "2. Nf3 ●" in moves and "(2. Bc4 {otb} 2... Nc6 ●)" in moves  # line end: missing eval
+    assert "2\t♘f3 ●\t…" in moves and "2.♗c4 otb 2...♘c6 ●" in moves   # line end: missing eval
     assert "evals right 0/1" in screen.summary.cget("text")
 
 
@@ -99,7 +99,7 @@ def test_navigation_and_highlight(saved_game, ui_env):
     screen.nav_end()
     assert screen.move_info.cget("text").startswith("4.Qxf7#")
     ranges = screen.moves.tag_ranges("current")
-    assert screen.moves.get(ranges[0], ranges[1]) == "Qxf7#"
+    assert screen.moves.get(ranges[0], ranges[1]) == "♕xf7#"
     screen.nav_home()
     assert screen.moves.tag_ranges("current") == ()
 

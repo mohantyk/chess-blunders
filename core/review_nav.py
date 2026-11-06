@@ -1,9 +1,9 @@
 """Tk-free logic behind the Review screen (PRD F13).
 
 * ``Navigator`` — where I am in the analysis tree and how ← → ↑ ↓ Home End move.
-* ``move_tree_segments`` — the move list as text segments (mainline inline,
-  variations indented in brackets), each tagged so the UI can colour it and
-  make moves clickable.
+* ``move_list_segments`` — the move list as text segments laid out like
+  Lichess (mainline rows, variation and comment blocks, figurines), each
+  tagged so the UI can colour it and make moves clickable.
 * helpers that place a stored finding on the right node and turn its best move
   into a board arrow.
 """
@@ -182,55 +182,134 @@ def _move_tags(node: TreeNode, line_kind: str, marked: set) -> tuple:
     return tags
 
 
-def move_tree_segments(tree: AnalysisTree, finding_nodes: Optional[list] = None) -> list:
-    """The move list as Segments: mainline inline, variations on indented lines.
+FIGURINES = {"K": "♔", "Q": "♕", "R": "♖", "B": "♗", "N": "♘"}
+GLYPH_TAGS = {"!!": "glyph_brilliant", "!": "glyph_good", "!?": "glyph_interesting",
+              "?!": "glyph_dubious", "?": "glyph_mistake", "??": "glyph_blunder",
+              "□": "glyph_only"}
 
-    Variation lines are tagged "otb" (in-game candidate, inherited by its
-    sub-variations) or "post" (post-game idea); mainline moves "main".
-    Moves with findings get "has_finding" and a following "●" marker.
+
+def figurine(san: str) -> str:
+    """SAN with piece letters as figurines, Lichess style: "Nf4+" -> "♘f4+", "e8=Q" -> "e8=♕"."""
+    if san and san[0] in FIGURINES:
+        san = FIGURINES[san[0]] + san[1:]
+    eq = san.find("=")
+    if eq != -1 and eq + 1 < len(san) and san[eq + 1] in FIGURINES:
+        san = san[:eq + 1] + FIGURINES[san[eq + 1]] + san[eq + 2:]
+    return san
+
+
+def move_list_segments(tree: AnalysisTree, finding_nodes: Optional[list] = None) -> list:
+    """The move list as Segments, laid out like Lichess's move panel.
+
+    * Mainline: one row per move number, "num<TAB>white<TAB>black<NEWLINE>",
+      tagged "row" plus "row_even" / "row_odd" for striping.
+    * A mainline move with a comment or alternatives ends its row; the comment
+      follows as its own block ("comment_block"), then each alternative on its
+      own line ("var_block"), marked ├ / └ when there are several. If that
+      happens after White's move, Black's move starts a new row with "…".
+    * Inside a variation, moves run inline; comments are tagged "comment" and
+      sub-variations are written in parentheses, tagged "sub" (lighter).
+    * Moves show figurines; glyphs are separate segments tagged from
+      GLYPH_TAGS; eval symbols "eval"; moves with findings get "has_finding"
+      and a following "●" marker.
+
+    Variation moves are tagged "otb" (in-game candidate, inherited by its
+    sub-variations) or "post" (post-game idea); mainline moves "main". Only
+    move segments carry a node, and their text is the move alone, so the UI
+    can make them clickable and highlight the current one.
     """
     marked = {id(n) for n in (finding_nodes or []) if n is not None}
-    segs: list = []
     root_children = [n for n in tree.nodes if n.parent is None]
 
     def kids(node):
         """Children of a node (root children for None)."""
         return node.children if node is not None else root_children
 
-    def emit_line(first: TreeNode, depth: int, kind: str) -> None:
-        """Emit one line starting at ``first`` and recurse into its side variations."""
-        node = first
-        force_number = True
+    def alternatives(node) -> list:
+        """Side variations branching at ``node`` (only when it's the main continuation)."""
+        sibs = kids(node.parent)
+        return sibs[1:] if sibs and sibs[0] is node else []
+
+    def move_segs(node, kind: str, extra: tuple = ()) -> list:
+        """One move: figurine SAN (clickable), its glyphs, eval symbol and finding marker."""
+        out = [Segment(figurine(node.san), _move_tags(node, kind, marked) + extra, node)]
+        for glyph in node.glyph_symbols:
+            out.append(Segment(glyph, (GLYPH_TAGS.get(glyph, "glyph"),) + extra))
+        if node.eval_symbol:
+            out.append(Segment(f" {node.eval_symbol}", ("eval", kind) + extra))
+        if id(node) in marked:
+            out.append(Segment(" ●", ("marker",) + extra))
+        return out
+
+    def inline_line(first, kind: str, extra: tuple) -> list:
+        """A variation written inline from ``first``, with (sub-variations) in parentheses."""
+        out, node, force_number = [], first, True
         while node is not None:
-            dots = "." if node.side == "white" else "..."
             if node.side == "white" or force_number:
-                segs.append(Segment(f"{node.move_number}{dots} ", ("num", kind)))
+                dots = "." if node.side == "white" else "..."
+                out.append(Segment(f"{node.move_number}{dots}", ("num", kind) + extra))
             force_number = False
             if node.starting_comment:
-                segs.append(Segment(f"{{{node.starting_comment}}} ", ("comment",)))
-            label = node.san + "".join(node.glyph_symbols)
-            segs.append(Segment(label, _move_tags(node, kind, marked), node))
-            if node.eval_symbol:
-                segs.append(Segment(f" {node.eval_symbol}", ("eval", kind)))
-            if id(node) in marked:
-                segs.append(Segment(" ●", ("marker",)))
-            segs.append(Segment(" ", ()))
+                out.append(Segment(f"{node.starting_comment} ", ("comment",) + extra))
+            out += move_segs(node, kind, extra)
+            out.append(Segment(" ", extra))
             if node.comment:
-                segs.append(Segment(f"{{{node.comment}}} ", ("comment",)))
-                force_number = True   # PGN style: repeat the move number after a comment
-            siblings = kids(node.parent)
-            if siblings and siblings[0] is node and len(siblings) > 1:
-                for alt in siblings[1:]:
-                    alt_kind = kind if kind != "main" else ("otb" if alt.otb else "post")
-                    segs.append(Segment("\n" + "    " * (depth + 1) + "(", ("paren", alt_kind)))
-                    emit_line(alt, depth + 1, alt_kind)
-                    segs.append(Segment(")", ("paren", alt_kind)))
-                segs.append(Segment("\n" + "    " * depth, ()))
+                out.append(Segment(f"{node.comment} ", ("comment",) + extra))
+                force_number = True
+            for alt in alternatives(node):
+                out.append(Segment("(", ("sub",) + extra))
+                out += inline_line(alt, kind, extra + ("sub",))
+                out.append(Segment(") ", ("sub",) + extra))
                 force_number = True
             node = node.children[0] if node.children else None
-        if segs and segs[-1].text == " ":
-            segs.pop()
+        if out and out[-1].text == " ":
+            out.pop()
+        return out
 
-    if root_children:
-        emit_line(root_children[0], 0, "main")
+    def blocks_after(node) -> list:
+        """The comment block and variation lines shown under a mainline move."""
+        out = []
+        if node.comment:
+            out.append(Segment(node.comment + "\n", ("comment_block",)))
+        alts = alternatives(node)
+        for i, alt in enumerate(alts):
+            kind = "otb" if alt.otb else "post"
+            if len(alts) > 1:
+                out.append(Segment("└ " if i == len(alts) - 1 else "├ ", ("tree", "var_block")))
+            out += inline_line(alt, kind, ("var_block",))
+            out.append(Segment("\n", ("var_block",)))
+        return out
+
+    mainline, node = [], (root_children[0] if root_children else None)
+    while node is not None:
+        mainline.append(node)
+        node = node.children[0] if node.children else None
+
+    segs: list = []
+    i = row = 0
+    while i < len(mainline):
+        node = mainline[i]
+        stripe = ("row", "row_odd" if row % 2 else "row_even")
+        row += 1
+        segs.append(Segment(f"{node.move_number}\t", ("num",) + stripe))
+        if node.side == "black":                       # row continues after an interruption
+            segs.append(Segment("…\t", ("num",) + stripe))
+            segs += move_segs(node, "main", stripe)
+            segs.append(Segment("\n", stripe))
+            segs += blocks_after(node)
+            i += 1
+            continue
+        segs += move_segs(node, "main", stripe)
+        after = blocks_after(node)
+        reply = mainline[i + 1] if i + 1 < len(mainline) else None
+        if reply is None or after:
+            segs.append(Segment("\t…\n" if reply is not None else "\n", ("num",) + stripe))
+            segs += after
+            i += 1
+            continue
+        segs.append(Segment("\t", stripe))
+        segs += move_segs(reply, "main", stripe)
+        segs.append(Segment("\n", stripe))
+        segs += blocks_after(reply)
+        i += 2
     return segs
