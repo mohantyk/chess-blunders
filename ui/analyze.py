@@ -30,6 +30,7 @@ STEP_OPTIONS = [
     "Step 4 – no blunder check",
 ]
 STEP_VALUES = [1, 2, 3, 4]
+PLACEHOLDER = "— choose —"     # step / primary theme until a suggestion or I pick one
 
 
 class AnalyzeScreen(ctk.CTkFrame):
@@ -121,9 +122,9 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Step dropdown
         self._field_title("1. Thinking step", row, "step", pady=(16, 2)); row += 1
-        self._step_var = ctk.StringVar(value=STEP_OPTIONS[0])
+        self._step_var = ctk.StringVar(value=PLACEHOLDER)
         self._step_menu = ctk.CTkOptionMenu(
-            self._right, variable=self._step_var, values=STEP_OPTIONS,
+            self._right, variable=self._step_var, values=[PLACEHOLDER] + STEP_OPTIONS,
             command=self._on_step_layer_change,
         )
         self._step_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 8)); row += 1
@@ -149,8 +150,8 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Primary theme
         self._field_title("4. Primary theme", row, "primary_theme", pady=(4, 2)); row += 1
-        primary_opts = self._cfg["primary_themes"] + ["Other…"]
-        self._primary_var = ctk.StringVar(value=primary_opts[0])
+        primary_opts = [PLACEHOLDER] + self._cfg["primary_themes"] + ["Other…"]
+        self._primary_var = ctk.StringVar(value=PLACEHOLDER)
         self._primary_menu = ctk.CTkOptionMenu(
             self._right, variable=self._primary_var, values=primary_opts,
             command=self._on_primary_change,
@@ -265,11 +266,11 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._touched = set()
         for field in self._captions:
             self._set_caption(field, None)
-        self._step_var.set(STEP_OPTIONS[0])
+        self._step_var.set(PLACEHOLDER)
         self._layer_var.set("")
         self._update_layer_buttons()
         self._diagnosis_label.configure(text="— select step and layer above —", text_color="gray")
-        self._primary_var.set(self._cfg["primary_themes"][0])
+        self._primary_var.set(PLACEHOLDER)
         self._secondary_var.set(self._cfg["secondary_themes"][0])
         self._on_primary_change(self._primary_var.get())       # hide + clear "Other…" boxes
         self._on_secondary_change(self._secondary_var.get())
@@ -315,8 +316,9 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._update_diagnosis()
 
     def _update_diagnosis(self):
-        step_idx = STEP_OPTIONS.index(self._step_var.get())
-        step = STEP_VALUES[step_idx]
+        if self._step_var.get() not in STEP_OPTIONS:
+            return
+        step = STEP_VALUES[STEP_OPTIONS.index(self._step_var.get())]
         layer = self._layer_var.get()
         if not layer:
             return
@@ -537,13 +539,18 @@ class AnalyzeScreen(ctk.CTkFrame):
     def _on_save(self):
         self._validation_label.configure(text="")
 
-        step_idx = STEP_OPTIONS.index(self._step_var.get())
-        step = STEP_VALUES[step_idx]
+        if self._step_var.get() not in STEP_OPTIONS:
+            self._validation_label.configure(text="Please choose the thinking step.")
+            return
+        step = STEP_VALUES[STEP_OPTIONS.index(self._step_var.get())]
         layer = self._layer_var.get()
         if not layer:
             self._validation_label.configure(text="Please select 'Didn't see it' or 'Saw it, got it wrong'.")
             return
 
+        if self._primary_var.get() == PLACEHOLDER:
+            self._validation_label.configure(text="Please choose a primary theme.")
+            return
         primary_theme, err = self._resolve_primary_theme()
         if err:
             self._validation_label.configure(text=err)

@@ -17,7 +17,7 @@ from tests.conftest import current_screen, pump  # noqa: E402
 from tests.stub_engine import StubEngine  # noqa: E402
 from tests.test_wizard_queue import PGN as BASE_PGN  # noqa: E402
 from ui import flow  # noqa: E402
-from ui.analyze import AnalyzeScreen  # noqa: E402
+from ui.analyze import PLACEHOLDER, STEP_OPTIONS, AnalyzeScreen  # noqa: E402
 from ui.games import GamesScreen  # noqa: E402
 from ui.review import ReviewScreen  # noqa: E402
 
@@ -74,6 +74,8 @@ def test_save_links_findings(game_id, ui_env):
     gid, _ = game_id
     item = build_queue(gid)[0]
     wiz = _wizard(ui_env, gid)
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_var.set("Fork")
     wiz._on_save()
     pump(ui_env)
     conn = db.get_connection()
@@ -85,6 +87,28 @@ def test_save_links_findings(game_id, ui_env):
     logged = {f["id"]: f for f in review_store.load_findings(gid)}
     assert all(logged[fid]["status"] == "logged" for fid in item["finding_ids"])
     assert "Nf3" not in [q["move_san"] for q in build_queue(gid)]
+
+
+def test_save_requires_step_and_primary_theme(game_id, ui_env, monkeypatch):
+    """Untouched, un-suggested step / primary theme show a placeholder and block Save."""
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    assert wiz._step_var.get() == PLACEHOLDER and wiz._primary_var.get() == PLACEHOLDER
+    wiz._on_save()
+    assert "step" in wiz._validation_label.cget("text")
+    wiz._step_var.set(STEP_OPTIONS[1])
+    wiz._on_save()
+    assert "primary theme" in wiz._validation_label.cget("text")
+    conn = db.get_connection()
+    assert conn.execute("SELECT COUNT(*) FROM blunders").fetchone()[0] == 0
+    conn.close()
+    wiz._primary_var.set("Pin")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT step, primary_theme FROM blunders").fetchone()[:] == (2, "Pin")
+    conn.close()
 
 
 def test_games_list_wizard_button(game_id, ui_env):
@@ -168,6 +192,7 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     wiz = _wizard(ui_env, gid)
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
+    wiz._step_var.set(STEP_OPTIONS[0])
     wiz._primary_other_entry.insert(0, "3-ply")
     wiz._on_save()
     pump(ui_env)
@@ -189,6 +214,7 @@ def test_other_theme_with_lichess_puzzle_theme(game_id, ui_env, tmp_config):
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
     assert wiz._lichess_theme_var.get() == "none"
+    wiz._step_var.set(STEP_OPTIONS[0])
     wiz._primary_other_entry.insert(0, "Overloading")
     wiz._lichess_theme_var.set("deflection")
     wiz._on_save()
@@ -202,6 +228,7 @@ def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
     wiz = _wizard(ui_env, gid)
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
+    wiz._step_var.set(STEP_OPTIONS[0])
     wiz._primary_var.set("Pin")
     wiz._on_primary_change("Pin")
     wiz._on_save()
