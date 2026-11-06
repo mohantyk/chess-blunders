@@ -21,6 +21,8 @@ from ui.analyze import PLACEHOLDER, STEP_OPTIONS, AnalyzeScreen  # noqa: E402
 from ui.games import GamesScreen  # noqa: E402
 from ui.review import ReviewScreen  # noqa: E402
 
+_REAL_ENRICH = AnalyzeScreen._async_enrich     # the game_id fixture replaces it with a no-op
+
 # Same game, with comments on 2.Nf3 (engine layer -> no LLM) and 6.d3? (no engine layer -> LLM).
 PGN = BASE_PGN.replace("2. Nf3 { [%clk 0:09:30] }", "2. Nf3 { developing [%clk 0:09:30] }") \
               .replace("6. d3? { [%clk 0:08:00] }", "6. d3? { too slow [%clk 0:08:00] }")
@@ -109,6 +111,34 @@ def test_save_requires_step_and_primary_theme(game_id, ui_env, monkeypatch):
     conn = db.get_connection()
     assert conn.execute("SELECT step, primary_theme FROM blunders").fetchone()[:] == (2, "Pin")
     conn.close()
+
+
+def test_last_saved_results_stay_visible_and_come_from_ui_thread(game_id, ui_env, monkeypatch):
+    """The saved move's puzzles/recommendation stay shown on the next move, labelled with the move."""
+    gid, _ = game_id
+    monkeypatch.setattr(AnalyzeScreen, "_async_enrich", _REAL_ENRICH)   # real worker, fakes below
+    from core import llm, puzzles
+    monkeypatch.setattr(puzzles, "fetch_puzzles",
+                        lambda angle, count=4: [{"url": "https://lichess.org/training/abc",
+                                                 "themes": ["fork"]}])
+    monkeypatch.setattr(llm, "get_recommendation", lambda ctx: ("Scan checks first.", None))
+    wiz = _wizard(ui_env, gid)
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_var.set("Fork")
+    wiz._on_save()
+    assert wiz._index == 1                               # moved on to the next move
+    pump(ui_env, until=lambda: "Scan checks first." in wiz._results_label.cget("text"))
+    text = wiz._results_label.cget("text")
+    assert text.startswith("Saved 2.Nf3") and "lichess.org/training/abc" in text
+    assert wiz._results_frame.winfo_manager() == "grid"
+    wiz._on_skip()
+    pump(ui_env)
+    assert wiz._results_frame.winfo_manager() == "grid"   # not hidden by the next move
+    assert "Scan checks first." in wiz._results_label.cget("text")
+    conn = db.get_connection()
+    row = conn.execute("SELECT puzzle_urls, llm_recommendation FROM blunders").fetchone()
+    conn.close()
+    assert "abc" in row[0] and row[1] == "Scan checks first."
 
 
 def test_games_list_wizard_button(game_id, ui_env):

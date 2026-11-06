@@ -63,6 +63,9 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._applying = False
         self._closing = False
         self._poll_id = None
+        self._enrich_results = {}      # blunder id -> result text, filled by worker threads
+        self._enrich_pending = None    # (blunder id, move label) of the last saved move
+        self._enrich_poll_id = None
         self._model = model_label()
         self._build_ui()
         self._track_edits()
@@ -106,6 +109,14 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._progress_label = ctk.CTkLabel(self._left, text="", text_color="gray",
                                              font=ctk.CTkFont(size=12))
         self._progress_label.grid(row=4, column=0, padx=12, pady=(8, 4), sticky="w")
+
+        # Last saved move: puzzles + recommendation. Stays visible across moves.
+        self._results_frame = ctk.CTkFrame(self._left, fg_color=("gray90", "gray17"))
+        self._results_label = ctk.CTkLabel(
+            self._results_frame, text="", wraplength=380, justify="left",
+            anchor="w", font=ctk.CTkFont(size=12),
+        )
+        self._results_label.pack(padx=10, pady=8, fill="x")
 
         # ---- Right panel ----
         right_outer = ctk.CTkScrollableFrame(self, corner_radius=0)
@@ -213,14 +224,6 @@ class AnalyzeScreen(ctk.CTkFrame):
         ctk.CTkButton(btn_frame, text="Save → next", width=140,
                       font=ctk.CTkFont(weight="bold"), command=self._on_save).pack(side="left")
 
-        # Puzzle / LLM results panel
-        self._results_frame = ctk.CTkFrame(self._right, fg_color=("gray90", "gray17"))
-        self._results_label = ctk.CTkLabel(
-            self._results_frame, text="", wraplength=420,
-            justify="left", font=ctk.CTkFont(size=12),
-        )
-        self._results_label.pack(padx=12, pady=10)
-
         self._row_counter = row
 
     # ------------------------------------------------------------------ data loading
@@ -281,7 +284,6 @@ class AnalyzeScreen(ctk.CTkFrame):
         if notes:
             self._notes_box.insert("1.0", notes)
         self._validation_label.configure(text="")
-        self._results_frame.grid_forget()
 
         # Engine pre-fill (PRD F14): layer from the candidate checks replaces the
         # LLM guess; "Rushed (time available)" when the move was played too fast.
@@ -460,11 +462,12 @@ class AnalyzeScreen(ctk.CTkFrame):
     def destroy(self):
         """Stop polling and destroy the screen (the game's pre-fill job keeps running)."""
         self._closing = True
-        if self._poll_id is not None:
-            try:
-                self.after_cancel(self._poll_id)
-            except Exception:
-                pass
+        for after_id in (self._poll_id, self._enrich_poll_id):
+            if after_id is not None:
+                try:
+                    self.after_cancel(after_id)
+                except Exception:
+                    pass
         super().destroy()
 
     # ------------------------------------------------------------------ Other… theme
@@ -591,23 +594,40 @@ class AnalyzeScreen(ctk.CTkFrame):
             from core.wizard_queue import mark_logged
             mark_logged(move_data["finding_ids"], blunder_id)
 
-        # Show loading state
-        self._results_frame.grid(row=self._row_counter, column=0, sticky="ew", padx=8, pady=8,
-                                  in_=self._right)
-        self._results_label.configure(text="Fetching puzzles and recommendation…")
+        # Show the loading state under the board; it stays until the next save
+        sign = "." if move_data["move_side"] == "white" else "..."
+        label = f"{move_data['move_number']}{sign}{move_data['move_san']}"
+        self._enrich_pending = (blunder_id, label)
+        self._show_enrich_text(label, "Fetching puzzles and recommendation…")
+        self._results_frame.grid(row=5, column=0, padx=12, pady=(4, 8), sticky="ew")
 
-        # Kick off async enrichment
+        # Kick off async enrichment; the UI thread polls for its result
         threading.Thread(
             target=self._async_enrich,
             args=(blunder_id, primary_theme, blunder_data),
             daemon=True,
         ).start()
+        if self._enrich_poll_id is None:
+            self._enrich_poll_id = self.after(300, self._poll_enrich)
 
         # Advance wizard — user can proceed while enrichment runs
         self._index += 1
         self._load_move()
 
     def _async_enrich(self, blunder_id, primary_theme, blunder_data):
+        """Worker thread: fetch puzzles + recommendation, save them, and hand the text to the UI.
+
+        Never touches Tk: the result goes into ``_enrich_results`` and ``_poll_enrich``
+        (UI thread) shows it. Any failure is reported as text so the box never hangs.
+        """
+        try:
+            text = self._enrich(blunder_id, primary_theme, blunder_data)
+        except Exception as exc:
+            text = f"Puzzles/recommendation failed: {exc}"
+        self._enrich_results[blunder_id] = text
+
+    def _enrich(self, blunder_id, primary_theme, blunder_data) -> str:
+        """Fetch puzzles and the LLM recommendation, store them on the blunder row, return the text."""
         import json as _json
         from core.puzzles import fetch_puzzles_for_theme
         from core.llm import get_recommendation
@@ -646,11 +666,29 @@ class AnalyzeScreen(ctk.CTkFrame):
             result_text += "Lichess puzzles:\n" + "\n".join(puzzle_text_lines) + "\n\n"
         result_text += "Recommendation:\n" + (
             rec or f"Recommendation unavailable: {rec_err}")
+        return result_text
 
-        def _update_label():
-            if self._results_label.winfo_exists():
-                self._results_label.configure(text=result_text)
-        self.after(0, _update_label)
+    def _show_enrich_text(self, label: str, text: str):
+        """Show ``text`` in the last-saved box, titled with the move it belongs to."""
+        self._results_label.configure(text=f"Saved {label}\n{text}")
+
+    def _poll_enrich(self):
+        """UI thread: show the last saved move's puzzles/recommendation once its worker is done.
+
+        Only Tk code runs here; the worker just stores its text in ``_enrich_results``.
+        Does nothing (and stops polling) once the screen is being closed.
+        """
+        self._enrich_poll_id = None
+        if self._closing or not self.winfo_exists():
+            return
+        if self._enrich_pending is None:
+            return
+        blunder_id, label = self._enrich_pending
+        if blunder_id in self._enrich_results:
+            self._show_enrich_text(label, self._enrich_results.pop(blunder_id))
+            self._enrich_pending = None
+            return
+        self._enrich_poll_id = self.after(300, self._poll_enrich)
 
     # ------------------------------------------------------------------ done
 

@@ -352,3 +352,41 @@ def update_blunder(blunder_id, data: dict):
     c.execute(f"UPDATE blunders SET {sets} WHERE id = ?", vals)
     conn.commit()
     conn.close()
+
+
+def get_training_entries(limit: int = 20) -> list:
+    """Saved wizard entries for the Patterns "Training" section, most recent first.
+
+    Each dict has: id, label (e.g. "12.Nf3" or "12...Nf3"), game ("white - black" or ""),
+    primary_theme, one_sentence_fix, recommendation (text or None) and puzzle_urls
+    (a list, empty when none were found).
+    """
+    import json
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT b.id, b.move_number, b.move_side, b.move_san, b.primary_theme,
+               b.one_sentence_fix, b.llm_recommendation, b.puzzle_urls,
+               g.white, g.black
+        FROM blunders b LEFT JOIN games g ON g.id = b.game_id
+        WHERE b.step IS NOT NULL AND b.layer IS NOT NULL
+        ORDER BY b.logged_at DESC, b.id DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        try:
+            urls = json.loads(r["puzzle_urls"]) if r["puzzle_urls"] else []
+        except ValueError:
+            urls = []
+        dots = "." if r["move_side"] == "white" else "..."
+        out.append({
+            "id": r["id"],
+            "label": f"{r['move_number']}{dots}{r['move_san']}",
+            "game": f"{r['white']} - {r['black']}" if r["white"] and r["black"] else "",
+            "primary_theme": r["primary_theme"],
+            "one_sentence_fix": r["one_sentence_fix"],
+            "recommendation": r["llm_recommendation"] or None,
+            "puzzle_urls": urls if isinstance(urls, list) else [],
+        })
+    return out
