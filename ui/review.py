@@ -22,7 +22,8 @@ from core.board_render import render_position
 from core.checks import BAND_SYMBOLS, compare_bands, fmt_clock, time_use
 from core.config import load_config
 from core.review_nav import (
-    EVAL_BANDS, Navigator, best_move_arrow, group_findings, move_tree_segments,
+    EVAL_BANDS, Navigator, best_move_arrow, choice_verdict, considered_moves, group_findings,
+    move_tree_segments,
 )
 from core.run_review import game_tree, load_game
 
@@ -358,6 +359,16 @@ class ReviewScreen(ctk.CTkFrame):
 
         row = ctk.CTkFrame(card, fg_color="transparent")
         row.pack(fill="x", padx=6, pady=6)
+        if f["id"] not in self.revealed and f["type"] == "chose_worse" \
+                and len(considered_moves(self.nav, f)) >= 2:
+            picks = ctk.CTkFrame(card, fg_color="transparent")
+            picks.pack(fill="x", padx=6, pady=(4, 0))
+            ctk.CTkLabel(picks, text="Your pick:", font=ctk.CTkFont(size=12)).pack(side="left")
+            for san in considered_moves(self.nav, f):
+                ctk.CTkButton(picks, text=san, width=56, height=24,
+                              command=lambda s=san, f=f: self.answer_choice(f, s)).pack(
+                    side="left", padx=2)
+
         if f["id"] not in self.revealed:
             if f["type"] == "missing_eval":
                 ctk.CTkLabel(row, text="Your eval:", font=ctk.CTkFont(size=12)).pack(side="left")
@@ -386,6 +397,9 @@ class ReviewScreen(ctk.CTkFrame):
                 return f"You: {mine} · engine: {f['engine_value']} → {verdict}"
             return f"Engine: {f.get('engine_value')}"
         text = f["answer_text"] or ""
+        verdict = choice_verdict(f)
+        if verdict:
+            text = f"{verdict}\n{text}"
         if f.get("pv_san"):
             text += f"\nLine: {' '.join(f['pv_san'][:6])}"
         return text
@@ -410,6 +424,17 @@ class ReviewScreen(ctk.CTkFrame):
         review_store.set_finding_status(f["id"], "seen" if f["status"] == "open" else f["status"],
                                         user_value=band)
         f["user_value"] = band
+        if f["status"] == "open":
+            f["status"] = "seen"
+        self.revealed.add(f["id"])
+        self.goto_finding(f)
+        self.refresh_findings()
+
+    def answer_choice(self, f: dict, san: str) -> None:
+        """Record which of my candidates I think was best, then reveal the answer."""
+        review_store.set_finding_status(f["id"], "seen" if f["status"] == "open" else f["status"],
+                                        user_answer=san)
+        f["user_answer"] = san
         if f["status"] == "open":
             f["status"] = "seen"
         self.revealed.add(f["id"])

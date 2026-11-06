@@ -107,3 +107,15 @@ def test_empty_game():
     """No moves: no segments, start position."""
     n = Navigator(build_tree(chess.pgn.read_game(io.StringIO('[White "a"]\n\n*')), "white"))
     assert move_tree_segments(n.tree) == [] and not n.forward()
+
+
+def test_considered_moves_and_verdict():
+    """The quiz offers the played move plus its otb siblings; the verdict reads my pick."""
+    from core.review_nav import choice_verdict, considered_moves
+    n = nav()
+    finding = {"type": "chose_worse", "path_san": ["e4", "e5", "Nf3"], "best_move_san": "Bc4"}
+    assert considered_moves(n, finding) == ["Nf3", "Bc4"]          # f4 isn't marked otb
+    assert considered_moves(n, {"path_san": ["e4", "e5", "Qh4"]}) == []
+    assert choice_verdict(finding) is None                          # not answered yet
+    assert choice_verdict({**finding, "user_answer": "Bc4"}).startswith("✓ Right: Bc4")
+    assert choice_verdict({**finding, "user_answer": "Nf3"}) == "✗ You picked Nf3; Bc4 was better."

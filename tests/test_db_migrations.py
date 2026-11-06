@@ -157,3 +157,16 @@ def test_m3_database_gets_move_evals_column(tmp_db, sample_games):
     db.init_db()
     assert len(glob.glob(tmp_db + ".bak-*")) == 2
     assert "move_evals_json" in {r["name"] for r in _rows("PRAGMA table_info(analysis_runs)")}
+
+
+def test_findings_get_user_answer_column(tmp_db, sample_games):
+    """A database whose findings table lacks user_answer is backed up, then altered."""
+    _make_legacy_db(tmp_db, sample_games)
+    db.init_db()
+    conn = db.get_connection()
+    conn.execute("ALTER TABLE findings DROP COLUMN user_answer")
+    conn.commit()
+    conn.close()
+    db.init_db()
+    assert len(glob.glob(tmp_db + ".bak-*")) == 2
+    assert "user_answer" in {r["name"] for r in _rows("PRAGMA table_info(findings)")}

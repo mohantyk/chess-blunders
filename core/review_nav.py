@@ -117,6 +117,28 @@ class Navigator:
         return True, node
 
 
+def considered_moves(nav: "Navigator", finding: dict) -> list:
+    """SAN of the moves I considered at a finding's decision: the played move and its otb siblings.
+
+    Used by the "which was best?" quiz on chose_worse cards. Empty when the
+    finding's move is no longer in the PGN.
+    """
+    node = nav.node_for_path(finding["path_san"])
+    if node is None:
+        return []
+    return [n.san for n in nav.children(node.parent) if n is node or n.otb]
+
+
+def choice_verdict(finding: dict) -> Optional[str]:
+    """"✓ Right: …" / "✗ You picked …" line for an answered chose_worse quiz, else None."""
+    pick, best = finding.get("user_answer"), finding.get("best_move_san")
+    if finding.get("type") != "chose_worse" or not pick or not best:
+        return None
+    if pick == best:
+        return f"✓ Right: {best} was the best of your candidates."
+    return f"✗ You picked {pick}; {best} was better."
+
+
 def best_move_arrow(finding: dict) -> Optional[tuple]:
     """(from, to, "engine") for a finding's best move in its position, if it parses."""
     san, fen = finding.get("best_move_san"), finding.get("fen")

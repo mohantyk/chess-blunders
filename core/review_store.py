@@ -173,9 +173,11 @@ def load_decision_points(run_id: int) -> list:
 
 
 def set_finding_status(finding_id: int, status: str, user_value: Optional[str] = None,
-                       only_if_open: bool = False) -> None:
-    """Change a finding's status (and optionally store my answer, e.g. an eval band).
+                       only_if_open: bool = False, user_answer: Optional[str] = None) -> None:
+    """Change a finding's status and optionally store my answer.
 
+    user_value: my eval band for a missing-eval finding.
+    user_answer: my pick on a quiz card (the candidate I think was best).
     only_if_open: leave seen / logged / dismissed findings as they are (used when
     revealing an answer, so a dismissed finding doesn't flip back to seen).
     """
@@ -187,6 +189,9 @@ def set_finding_status(finding_id: int, status: str, user_value: Optional[str] =
     if user_value is not None:
         sql += ", user_value = ?"
         args.append(user_value)
+    if user_answer is not None:
+        sql += ", user_answer = ?"
+        args.append(user_answer)
     sql += " WHERE id = ?"
     args.append(finding_id)
     if only_if_open:
