@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 .dashboard/
 engine_cache.db
+blunders.db.bak-*

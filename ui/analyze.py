@@ -139,6 +139,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._primary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._primary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._primary_other_row = row; row += 1      # shown here, under the dropdown
 
         # Secondary theme
         ctk.CTkLabel(self._right, text="5. Secondary theme", font=ctk.CTkFont(weight="bold")).grid(
@@ -151,6 +152,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._secondary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._secondary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._secondary_other_row = row; row += 1
 
         # One-sentence fix
         ctk.CTkLabel(self._right, text="6. One-sentence fix", font=ctk.CTkFont(weight="bold")).grid(
@@ -239,6 +241,8 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._diagnosis_label.configure(text="— select step and layer above —", text_color="gray")
         self._primary_var.set(self._cfg["primary_themes"][0])
         self._secondary_var.set(self._cfg["secondary_themes"][0])
+        self._on_primary_change(self._primary_var.get())       # hide + clear "Other…" boxes
+        self._on_secondary_change(self._secondary_var.get())
         self._fix_entry.delete(0, "end")
         self._presc_var.set(self._cfg["training_prescriptions"][0])
         self._notes_box.delete("1.0", "end")
@@ -289,18 +293,32 @@ class AnalyzeScreen(ctk.CTkFrame):
     # ------------------------------------------------------------------ Other… theme
 
     def _on_primary_change(self, value):
-        if value == "Other…":
-            self._primary_other_entry.grid(row=7, column=0, sticky="ew", padx=8, pady=(0, 4),
-                                            in_=self._right)
-        else:
-            self._primary_other_entry.grid_forget()
+        """Show the "new theme" box under the primary dropdown only while "Other…" is chosen."""
+        self._toggle_other_entry(self._primary_other_entry, self._primary_other_row,
+                                 value == "Other…")
 
     def _on_secondary_change(self, value):
-        if value == "Other…":
-            self._secondary_other_entry.grid(row=9, column=0, sticky="ew", padx=8, pady=(0, 4),
-                                              in_=self._right)
+        """Show the "new theme" box under the secondary dropdown only while "Other…" is chosen."""
+        self._toggle_other_entry(self._secondary_other_entry, self._secondary_other_row,
+                                 value == "Other…")
+
+    def _toggle_other_entry(self, entry, row: int, show: bool):
+        """Grid ``entry`` in its own row below its dropdown, or hide and clear it."""
+        if show:
+            entry.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
+            entry.focus_set()
         else:
-            self._secondary_other_entry.grid_forget()
+            entry.delete(0, "end")
+            entry.grid_remove()
+
+    def _add_theme_option(self, menu, var, custom: str):
+        """Put a newly saved custom theme into its dropdown (before "Other…") and select it."""
+        values = list(menu.cget("values"))
+        if custom not in values:
+            values.insert(len(values) - 1 if values and values[-1] == "Other…" else len(values),
+                          custom)
+            menu.configure(values=values)
+        var.set(custom)
 
     def _resolve_primary_theme(self):
         val = self._primary_var.get()
@@ -309,6 +327,8 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Primary theme: enter a theme name or choose from the list."
             append_primary_theme(custom)
+            self._add_theme_option(self._primary_menu, self._primary_var, custom)
+            self._on_primary_change(custom)
             return custom, None
         return val, None
 
@@ -319,6 +339,8 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Secondary theme: enter a theme name or choose from the list."
             append_secondary_theme(custom)
+            self._add_theme_option(self._secondary_menu, self._secondary_var, custom)
+            self._on_secondary_change(custom)
             return custom, None
         return val, None
 

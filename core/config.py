@@ -85,10 +85,43 @@ def load_config() -> dict:
     return data
 
 
+def _merge_into(target, source: dict) -> None:
+    """Copy ``source`` into a round-trip-loaded mapping, keeping the target's comments.
+
+    Nested sections are merged key by key; changed lists are refilled in place
+    (so the comment attached to the list itself survives); other values are set.
+    """
+    for key, value in source.items():
+        current = target.get(key)
+        if isinstance(value, dict) and hasattr(current, "items"):
+            _merge_into(current, value)
+        elif isinstance(value, list) and isinstance(current, list):
+            if list(current) != value:
+                current[:] = value
+        elif current != value or key not in target:
+            target[key] = value
+
+
 def save_config(config: dict):
-    """Write the whole config dict back to config.yaml."""
+    """Write the config dict to config.yaml without losing the file's comments.
+
+    The existing file is loaded in ruamel.yaml's round-trip mode, the new
+    values are merged in, and it is written back, so hand-written comments
+    stay. A missing or empty file is simply written from ``config``.
+    """
+    from ruamel.yaml import YAML
+
+    rt = YAML()
+    rt.allow_unicode = True
+    data = None
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, "r") as f:
+            data = rt.load(f)
+    if not hasattr(data, "items"):
+        data = {}
+    _merge_into(data, config)
     with open(CONFIG_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        rt.dump(data, f)
 
 
 def append_primary_theme(theme: str):

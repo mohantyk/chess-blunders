@@ -119,3 +119,80 @@ def test_wizard_board_uses_my_colour(game_id, ui_env, monkeypatch):
     flow.open_wizard(ui_env, gid, "black", build_queue(gid), on_done=None)
     pump(ui_env)
     assert seen and set(seen) == {"black"}
+
+
+@pytest.fixture
+def tmp_config(tmp_path, monkeypatch):
+    """A commented copy of config.yaml in a temp folder, so theme appends don't touch the real one."""
+    from core import config
+    path = tmp_path / "config.yaml"
+    path.write_text("# my settings\nprimary_themes:  # main ideas\n- Fork\n- Pin\n"
+                    "secondary_themes:\n- None\n- Time pressure\n"
+                    "engine:\n  depth: 15   # plies\n", encoding="utf-8")
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    return path
+
+
+def _grid_row(widget):
+    """The grid row a widget is placed in, or None when it isn't shown."""
+    return int(widget.grid_info()["row"]) if widget.winfo_manager() == "grid" else None
+
+
+def test_other_theme_box_below_dropdown_and_reset(game_id, ui_env, tmp_config):
+    """'Other…' shows a box under the still-visible dropdown; the next move hides and clears it."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    pump(ui_env)
+    assert _grid_row(wiz._primary_menu) is not None
+    assert _grid_row(wiz._primary_other_entry) == _grid_row(wiz._primary_menu) + 1
+    wiz._primary_other_entry.insert(0, "half typed")
+    wiz._on_primary_change("Pin")                  # back to a listed theme
+    assert _grid_row(wiz._primary_other_entry) is None
+    assert wiz._primary_other_entry.get() == ""
+
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._secondary_var.set("Other…")
+    wiz._on_secondary_change("Other…")
+    assert _grid_row(wiz._secondary_other_entry) == _grid_row(wiz._secondary_menu) + 1
+    wiz._on_skip()
+    pump(ui_env)
+    assert _grid_row(wiz._primary_other_entry) is None
+    assert _grid_row(wiz._secondary_other_entry) is None
+    assert wiz._primary_var.get() != "Other…"
+
+
+def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
+    """A custom theme is saved with the entry, appended to config (comments kept), and listed."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._primary_other_entry.insert(0, "3-ply")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "3-ply"
+    conn.close()
+    assert "3-ply" in wiz._primary_menu.cget("values")
+    assert wiz._primary_menu.cget("values")[-1] == "Other…"
+    text = tmp_config.read_text(encoding="utf-8")
+    assert "# my settings" in text and "# main ideas" in text and "# plies" in text
+    assert "- 3-ply" in text
+
+
+def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
+    """Choosing a listed theme after using 'Other…' saves the listed theme."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._primary_var.set("Pin")
+    wiz._on_primary_change("Pin")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "Pin"
+    conn.close()
