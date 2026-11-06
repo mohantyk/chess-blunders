@@ -85,6 +85,11 @@ def ui_env(tk_app, tmp_db, tmp_path, monkeypatch):
     for widget in tk_app.winfo_children():
         widget.destroy()
     tk_app.update()
+    # Free dead Tk objects (fonts, images) here on the main thread. Otherwise a later
+    # test's worker thread can trigger their __del__, which calls Tcl from that thread
+    # and blocks until the main thread runs a main loop -- which tests never do.
+    import gc
+    gc.collect()
 
 
 def pump(app, until=None, timeout=10.0):

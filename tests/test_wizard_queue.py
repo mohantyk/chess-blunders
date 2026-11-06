@@ -86,6 +86,8 @@ def test_chose_worse_prefill(tmp_db):
     review_store.save_review(gid, review_game(tree, stub, CFG))
     (item,) = wizard_queue.build_queue(gid)
     assert item["reasons"] == ["chose_worse"] and item["layer_prefill"] == "got_it_wrong"
+    assert item["considered"] == ["Nf3", "Bc4"] and item["label"] == "2.Nf3"
+    assert item["rushed"] is False
 
 
 def test_dismissed_findings_do_not_queue(game_id):

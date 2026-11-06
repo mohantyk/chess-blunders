@@ -43,6 +43,13 @@ def game_tree(game_row, username: Optional[str] = None) -> AnalysisTree:
     return build_tree(game, color)
 
 
+def open_engine(engine_factory=None) -> EngineService:
+    """A started EngineService with the configured engine and cache (caller closes it)."""
+    svc = EngineService(load_config()["engine"], engine_factory=engine_factory)
+    svc.open()
+    return svc
+
+
 def needs_run(game_id: int) -> bool:
     """True if the game was never reviewed or its analysis changed since the last run."""
     run = latest_run(game_id)

@@ -194,3 +194,69 @@ def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
     conn = db.get_connection()
     assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "Pin"
     conn.close()
+
+
+def test_suggestion_fills_untouched_fields_with_captions(game_id, ui_env, monkeypatch):
+    """A ready suggestion fills every field I haven't edited and labels its source."""
+    from core.prefill import Suggestion
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    assert wiz._captions["step"].cget("text") == "suggesting…"
+    assert wiz._captions["layer"].cget("text") == "· from engine"     # F7 fact, shown at once
+    wiz._presc_var.set("Endgame study")                                 # my own edit
+    wiz._suggestions[0] = Suggestion(
+        values={"step": 2, "layer": "didnt_see", "primary_theme": "Pin",
+                "secondary_theme": "Time pressure", "training_prescription": "Fork puzzles",
+                "one_sentence_fix": "Check forcing moves first."},
+        sources={"step": "engine", "layer": "engine", "primary_theme": "ai",
+                 "secondary_theme": "ai", "training_prescription": "engine",
+                 "one_sentence_fix": "ai"},
+        reason="Missed a pin.")
+    wiz._apply_suggestion()
+    assert wiz._step_var.get() == "Step 2 – missed own tactic"
+    assert wiz._primary_var.get() == "Pin" and wiz._secondary_var.get() == "Time pressure"
+    assert wiz._fix_entry.get() == "Check forcing moves first."
+    assert wiz._presc_var.get() == "Endgame study"                      # untouched by the AI
+    assert wiz._captions["training_prescription"].cget("text") == ""
+    assert wiz._captions["step"].cget("text") == "· from engine"
+    assert wiz._captions["primary_theme"].cget("text").startswith("· AI suggestion")
+    assert "Pattern recognition gap" in wiz._diagnosis_label.cget("text")
+    assert wiz._ai_note.cget("text") == "AI: Missed a pin."
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    row = dict(conn.execute("SELECT step, primary_theme, one_sentence_fix, "
+                            "training_prescription FROM blunders").fetchone())
+    conn.close()
+    assert row == {"step": 2, "primary_theme": "Pin",
+                   "one_sentence_fix": "Check forcing moves first.",
+                   "training_prescription": "Endgame study"}
+
+
+def test_editing_a_field_clears_its_caption(game_id, ui_env, monkeypatch):
+    """Changing a pre-filled field makes it mine: caption cleared, later suggestions skip it."""
+    from core.prefill import Suggestion
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._suggestions[0] = Suggestion(values={"step": 3}, sources={"step": "ai"})
+    wiz._apply_suggestion()
+    wiz._step_var.set("Step 1 – missed opponent threat")
+    assert wiz._captions["step"].cget("text") == ""
+    wiz._suggestions[0] = Suggestion(values={"step": 4}, sources={"step": "ai"})
+    wiz._apply_suggestion()
+    assert wiz._step_var.get() == "Step 1 – missed opponent threat"
+
+
+def test_prefetch_with_engine_and_no_llm_shows_error(game_id, ui_env):
+    """The real worker: engine rules still fill the step; the LLM error is shown in orange."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    pump(ui_env, until=lambda: 0 in wiz._applied, timeout=20)
+    assert "AI suggestions unavailable" in wiz._ai_note.cget("text")
+    assert "disabled in tests" in wiz._ai_note.cget("text")
+    assert wiz._captions["step"].cget("text") == "· from engine"
+    wiz._on_skip()
+    pump(ui_env, until=lambda: 1 in wiz._applied, timeout=20)
+    assert wiz._captions["secondary_theme"].cget("text") == "· from engine"   # Rushed fact

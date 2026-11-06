@@ -101,14 +101,14 @@ tests/                  pytest suite; fixtures/sample_study.pgn = two real chapt
 
 ```env
 OLLAMA_API_KEY=...
-OLLAMA_MODEL=llama3
-OLLAMA_BASE_URL=https://your-ollama-endpoint/v1
+OLLAMA_MODEL=...                # optional: overrides llm.model in config.yaml
+OLLAMA_BASE_URL=...             # optional: overrides llm.base_url
 LICHESS_TOKEN=lip_...          # optional, read-only, scope study:read, for a private study
 # M5: EXPLAIN_MODEL=..., EXPLAIN_BASE_URL=...
 CHESS_PATTERNS_DB=...           # optional: use another database file (e.g. a scratch copy)
 ```
 
-Missing LLM settings never block the app: LLM features are skipped.
+The LLM endpoint is the `llm:` section of `config.yaml` (default `http://mac-mini:11434/v1`, `gemma4:12b`, `timeout_s: 90`). LLM failures never block the app; the wizard shows the reason.
 
 ### `config.yaml` (defaults; missing keys are filled in from these)
 
@@ -275,7 +275,8 @@ engine_cache     (in engine_cache.db) key, fen, depth, time_ms, multipv, engine_
 ### F13 — Review screen (Built)
 
 - **Board:** my colour at the bottom; my `[%cal]`/`[%csl]` drawings; last move; the engine's best move in purple once an answer is revealed.
-- **Move list:** mainline inline, variations bracketed and indented; `otb` lines green, post-game ideas blue; ● on moves with findings; click to jump.
+- **Move list (Lichess style):** mainline as rows (number | White | Black, striped); a mainline move's comment as its own block and its alternatives as shaded lines below (├ / └ for several), deeper sub-variations inline in lighter parentheses; "…" when White's move is interrupted; figurines and coloured glyphs; `otb` lines green, post-game ideas blue; ● on moves with findings; click to jump.
+- **Choice quiz:** an unrevealed `chose_worse` card shows one button per move I considered (played move + `otb` siblings). My pick is stored in `findings.user_answer`; the answer opens with "✓ Right …" / "✗ You picked …". "Show answer" still skips.
 - **Findings:** grouped (Your candidates · Evaluations · Holes in your lines · Blind spots · Time · Your glyphs). Hint first; **Show answer** reveals best move, eval and line (≤ 6 plies) and marks it `seen`. Missing evals: pick a band first, then see the engine's and the verdict. **Dismiss / Restore** (`dismissed` findings are hidden behind "show dismissed" and left out of metrics; logged ones can't be dismissed).
 - **Header:** per-game metrics as small counts; longest thinks under the board.
 - **Keys:** ← → current line, ↑ ↓ sibling variations, Home / End. **Open in Lichess ↗** for the current position. No piece moving.
@@ -283,7 +284,10 @@ engine_cache     (in engine_cache.db) key, fen, depth, time_ms, multipv, engine_
 ### F14 — Wizard queue and pre-fill (Built)
 
 - **Queue:** my mainline moves with a `?`/`??` glyph (or `$9` / eval-swing missed win, as before), or a non-dismissed `candidate_miss`, `chose_worse` or `blind_spot`. Line holes don't queue. Moves already saved in the wizard for this game are skipped.
-- **Pre-fill:** layer from F7 (replaces the LLM guess; the LLM pre-fill runs only for commented moves without an engine layer); "Rushed (time available)" when a `rushed` finding exists; notes = my comment + "Engine: best was Qe6 (+2.10); you played Rff1 (-3.40)." Step, primary theme, fix and prescription stay manual.
+- **Pre-fill — facts:** layer from F7; "Rushed (time available)" when a `rushed` finding exists (never overridden); notes = my comment + "Engine: best was Qe6 (+2.10); you played Rff1 (-3.40)."
+- **Pre-fill — engine guesses** (`core/position_facts.py`): from the board and the engine (best line, played move, opponent's best reply, null-move threat) it finds tactics (fork, pin, skewer, discovered attack, mate / back-rank mate, winning an unprotected piece) and loose pieces. Step: my move allowed a tactic that was already threatened → 1; allowed a new one → 4 (2 if I also missed a real tactic of my own); best move was my own check/tactic → 2; else 3. Theme from the relevant line's tactic; prescription from the theme, else "Play slower time controls" if rushed, else by step.
+- **Pre-fill — AI** (`core/prefill.py`, prompt `core/prompts/wizard_prefill.md`): one structured-output call per move with the facts, guesses, my comment and considered moves; returns step, layer, both themes, prescription (enums from config) and a one-sentence fix. It may change the guesses (marked "AI suggestion"); values equal to the guesses stay "from engine".
+- **Wizard:** suggestions for the whole queue are computed on a worker thread when the wizard opens (engine via `run_review.open_engine`) and applied on the UI thread; fields show their source; a field I edit is never overwritten; engine/LLM problems appear as an orange line and the other source still fills in.
 - **Save:** stores `source`, `finding_id` (main finding), time spent / clock left; all of the move's findings become `logged` with `blunder_id`.
 
 **Decisions:** comment-only moves don't queue (SPEC/PRD said "or comment", but the code never did and my studies comment many ordinary moves); already-saved moves are skipped.
@@ -295,7 +299,7 @@ On Patterns ("Analysis skill"), per game from the latest run and summed across g
 ### F16 — LLM explanations (To do, M5)
 
 - "Explain" on a revealed finding, and "Answer my question" for comments that ask one (`?` at the end, "why", "don't understand"; e.g. *"I don't understand why taking with the d pawn is better (acc to SF)"*).
-- **Prompt input, all computed:** FEN; 8×8 text diagram; side to move; material; attacked and undefended pieces for both sides; available checks and captures; the opponent's threat (engine best after a null move, where legal); engine PV and eval for the move played/assumed and for the best move; my comment.
+- **Prompt input, all computed** (already built for the wizard: `core/position_facts.py`, `PositionFacts.to_text()`): FEN; 8×8 text diagram; side to move; material; attacked and undefended pieces for both sides; available checks and captures; the opponent's threat (engine best after a null move, where legal); engine PV and eval for the move played/assumed and for the best move; my comment.
 - **Model instructions:** use only the facts given; no moves outside the PVs; 2–4 sentences; plain language.
 - Same OpenAI-compatible client with separate `EXPLAIN_MODEL` / `EXPLAIN_BASE_URL` (default: the Ollama endpoint on the Mac mini, 16 GB → ~7–14B models). Label "AI explanation — may contain mistakes". Store in `findings.explanation`. No board images.
 

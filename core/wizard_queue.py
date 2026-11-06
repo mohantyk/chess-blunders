@@ -58,7 +58,9 @@ def build_queue(game_id: int) -> list:
     Each item has the keys the wizard always used (move_number, move_side,
     move_san, fen, lichess_url, flag_type, annotation, move_obj) plus:
     reasons, layer_prefill, secondary_prefill, engine_summary, finding_ids,
-    primary_finding_id, source, time_spent_s, clock_remaining_s.
+    primary_finding_id, source, time_spent_s, clock_remaining_s, considered (the
+    moves I marked otb here, played move included; empty if none), label
+    ("14...e4") and rushed.
     """
     cfg = load_config()
     row = load_game(game_id)
@@ -83,6 +85,7 @@ def build_queue(game_id: int) -> list:
     time_of = {id(t.node): t for t in times}
     saved = _saved_moves(game_id)
 
+    roots = [n for n in tree.nodes if n.parent is None]
     queue = []
     for node in tree.mainline:
         if not node.is_mine:
@@ -107,6 +110,8 @@ def build_queue(game_id: int) -> list:
         summary = engine_summary(evals.get(tuple(node.path_san)))
         notes = "\n".join(x for x in (node.comment, summary) if x) or None
         t = time_of.get(id(node))
+        siblings = node.parent.children if node.parent is not None else roots
+        considered = [n.san for n in siblings if n is node or n.otb]
         queue.append({
             "move_number": node.move_number,
             "move_side": node.side,
@@ -126,6 +131,9 @@ def build_queue(game_id: int) -> list:
             "source": "engine" if fs else "manual",
             "time_spent_s": t.spent_s if t else None,
             "clock_remaining_s": t.remaining_s if t else None,
+            "considered": considered if len(considered) > 1 else [],
+            "label": node.label,
+            "rushed": "rushed" in types,
         })
     return queue
 
