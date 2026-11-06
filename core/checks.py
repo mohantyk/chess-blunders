@@ -341,7 +341,13 @@ def check_decisions(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
         otb_uci = {n.uci for n in dp.otb_candidates}
         post_uci = {n.uci for n in dp.post_alternatives}
         known = dp.candidates_known
-        hit = bool(otb_uci & top_uci) if known else None
+        hit = None
+        if known:
+            # A candidate also counts when the position after it is within the window
+            # of the best move's win%, even if the engine's top-2 list left it out.
+            hit = bool(otb_uci & top_uci) or any(
+                best_w - ev(n.fen_after).win_for(me) <= cfg["candidate_window"]
+                for n in dp.otb_candidates)
         post_hit = bool(post_uci & top_uci)
         best_san = top_set[0][0]
         eval_text = format_eval(res)

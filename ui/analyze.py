@@ -5,7 +5,8 @@ import threading
 import webbrowser
 import customtkinter as ctk
 
-from core.config import load_config, append_primary_theme, append_secondary_theme
+from core.config import (load_config, append_primary_theme, append_secondary_theme,
+                         set_lichess_theme, COMMON_LICHESS_THEMES)
 from core.db import insert_blunder, update_blunder
 from core.board_render import fen_to_ctk_image
 from core.llm import model_label
@@ -29,6 +30,7 @@ STEP_OPTIONS = [
     "Step 4 – no blunder check",
 ]
 STEP_VALUES = [1, 2, 3, 4]
+PLACEHOLDER = "— choose —"     # step / primary theme until a suggestion or I pick one
 
 
 class AnalyzeScreen(ctk.CTkFrame):
@@ -61,6 +63,9 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._applying = False
         self._closing = False
         self._poll_id = None
+        self._enrich_results = {}      # blunder id -> result text, filled by worker threads
+        self._enrich_pending = None    # (blunder id, move label) of the last saved move
+        self._enrich_poll_id = None
         self._model = model_label()
         self._build_ui()
         self._track_edits()
@@ -105,6 +110,14 @@ class AnalyzeScreen(ctk.CTkFrame):
                                              font=ctk.CTkFont(size=12))
         self._progress_label.grid(row=4, column=0, padx=12, pady=(8, 4), sticky="w")
 
+        # Last saved move: puzzles + recommendation. Stays visible across moves.
+        self._results_frame = ctk.CTkFrame(self._left, fg_color=("gray90", "gray17"))
+        self._results_label = ctk.CTkLabel(
+            self._results_frame, text="", wraplength=380, justify="left",
+            anchor="w", font=ctk.CTkFont(size=12),
+        )
+        self._results_label.pack(padx=10, pady=8, fill="x")
+
         # ---- Right panel ----
         right_outer = ctk.CTkScrollableFrame(self, corner_radius=0)
         right_outer.grid(row=0, column=1, sticky="nsew", padx=(8, 16), pady=16)
@@ -120,9 +133,9 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Step dropdown
         self._field_title("1. Thinking step", row, "step", pady=(16, 2)); row += 1
-        self._step_var = ctk.StringVar(value=STEP_OPTIONS[0])
+        self._step_var = ctk.StringVar(value=PLACEHOLDER)
         self._step_menu = ctk.CTkOptionMenu(
-            self._right, variable=self._step_var, values=STEP_OPTIONS,
+            self._right, variable=self._step_var, values=[PLACEHOLDER] + STEP_OPTIONS,
             command=self._on_step_layer_change,
         )
         self._step_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 8)); row += 1
@@ -148,14 +161,24 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Primary theme
         self._field_title("4. Primary theme", row, "primary_theme", pady=(4, 2)); row += 1
-        primary_opts = self._cfg["primary_themes"] + ["Other…"]
-        self._primary_var = ctk.StringVar(value=primary_opts[0])
+        primary_opts = [PLACEHOLDER] + self._cfg["primary_themes"] + ["Other…"]
+        self._primary_var = ctk.StringVar(value=PLACEHOLDER)
         self._primary_menu = ctk.CTkOptionMenu(
             self._right, variable=self._primary_var, values=primary_opts,
             command=self._on_primary_change,
         )
         self._primary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
-        self._primary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        # "Other…" row: new theme name + the Lichess puzzle theme to train it with
+        self._primary_other_box = ctk.CTkFrame(self._right, fg_color="transparent")
+        self._primary_other_box.columnconfigure(0, weight=1)
+        self._primary_other_entry = ctk.CTkEntry(self._primary_other_box,
+                                                 placeholder_text="Enter new theme…")
+        self._primary_other_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lichess_theme_var = ctk.StringVar(value="none")
+        self._lichess_theme_menu = ctk.CTkOptionMenu(
+            self._primary_other_box, variable=self._lichess_theme_var, width=170,
+            values=["none"] + COMMON_LICHESS_THEMES)
+        self._lichess_theme_menu.grid(row=0, column=1)
         self._primary_other_row = row; row += 1      # shown here, under the dropdown
 
         # Secondary theme
@@ -168,6 +191,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._secondary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._secondary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._secondary_other_box = self._secondary_other_entry   # no extra widgets here
         self._secondary_other_row = row; row += 1
 
         # One-sentence fix
@@ -199,14 +223,6 @@ class AnalyzeScreen(ctk.CTkFrame):
                       hover_color=("gray75", "gray30"), command=self._on_skip).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_frame, text="Save → next", width=140,
                       font=ctk.CTkFont(weight="bold"), command=self._on_save).pack(side="left")
-
-        # Puzzle / LLM results panel
-        self._results_frame = ctk.CTkFrame(self._right, fg_color=("gray90", "gray17"))
-        self._results_label = ctk.CTkLabel(
-            self._results_frame, text="", wraplength=420,
-            justify="left", font=ctk.CTkFont(size=12),
-        )
-        self._results_label.pack(padx=12, pady=10)
 
         self._row_counter = row
 
@@ -253,11 +269,11 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._touched = set()
         for field in self._captions:
             self._set_caption(field, None)
-        self._step_var.set(STEP_OPTIONS[0])
+        self._step_var.set(PLACEHOLDER)
         self._layer_var.set("")
         self._update_layer_buttons()
         self._diagnosis_label.configure(text="— select step and layer above —", text_color="gray")
-        self._primary_var.set(self._cfg["primary_themes"][0])
+        self._primary_var.set(PLACEHOLDER)
         self._secondary_var.set(self._cfg["secondary_themes"][0])
         self._on_primary_change(self._primary_var.get())       # hide + clear "Other…" boxes
         self._on_secondary_change(self._secondary_var.get())
@@ -268,7 +284,6 @@ class AnalyzeScreen(ctk.CTkFrame):
         if notes:
             self._notes_box.insert("1.0", notes)
         self._validation_label.configure(text="")
-        self._results_frame.grid_forget()
 
         # Engine pre-fill (PRD F14): layer from the candidate checks replaces the
         # LLM guess; "Rushed (time available)" when the move was played too fast.
@@ -303,8 +318,9 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._update_diagnosis()
 
     def _update_diagnosis(self):
-        step_idx = STEP_OPTIONS.index(self._step_var.get())
-        step = STEP_VALUES[step_idx]
+        if self._step_var.get() not in STEP_OPTIONS:
+            return
+        step = STEP_VALUES[STEP_OPTIONS.index(self._step_var.get())]
         layer = self._layer_var.get()
         if not layer:
             return
@@ -446,33 +462,36 @@ class AnalyzeScreen(ctk.CTkFrame):
     def destroy(self):
         """Stop polling and destroy the screen (the game's pre-fill job keeps running)."""
         self._closing = True
-        if self._poll_id is not None:
-            try:
-                self.after_cancel(self._poll_id)
-            except Exception:
-                pass
+        for after_id in (self._poll_id, self._enrich_poll_id):
+            if after_id is not None:
+                try:
+                    self.after_cancel(after_id)
+                except Exception:
+                    pass
         super().destroy()
 
     # ------------------------------------------------------------------ Other… theme
 
     def _on_primary_change(self, value):
         """Show the "new theme" box under the primary dropdown only while "Other…" is chosen."""
-        self._toggle_other_entry(self._primary_other_entry, self._primary_other_row,
-                                 value == "Other…")
+        self._toggle_other_entry(self._primary_other_box, self._primary_other_entry,
+                                 self._primary_other_row, value == "Other…")
+        if value != "Other…":
+            self._lichess_theme_var.set("none")
 
     def _on_secondary_change(self, value):
         """Show the "new theme" box under the secondary dropdown only while "Other…" is chosen."""
-        self._toggle_other_entry(self._secondary_other_entry, self._secondary_other_row,
-                                 value == "Other…")
+        self._toggle_other_entry(self._secondary_other_box, self._secondary_other_entry,
+                                 self._secondary_other_row, value == "Other…")
 
-    def _toggle_other_entry(self, entry, row: int, show: bool):
-        """Grid ``entry`` in its own row below its dropdown, or hide and clear it."""
+    def _toggle_other_entry(self, box, entry, row: int, show: bool):
+        """Grid ``box`` (holding ``entry``) in its own row below its dropdown, or hide and clear it."""
         if show:
-            entry.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
+            box.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
             entry.focus_set()
         else:
             entry.delete(0, "end")
-            entry.grid_remove()
+            box.grid_remove()
 
     def _add_theme_option(self, menu, var, custom: str):
         """Put a newly saved custom theme into its dropdown (before "Other…") and select it."""
@@ -490,6 +509,7 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Primary theme: enter a theme name or choose from the list."
             append_primary_theme(custom)
+            set_lichess_theme(custom, self._lichess_theme_var.get())
             self._add_theme_option(self._primary_menu, self._primary_var, custom)
             self._on_primary_change(custom)
             return custom, None
@@ -522,13 +542,18 @@ class AnalyzeScreen(ctk.CTkFrame):
     def _on_save(self):
         self._validation_label.configure(text="")
 
-        step_idx = STEP_OPTIONS.index(self._step_var.get())
-        step = STEP_VALUES[step_idx]
+        if self._step_var.get() not in STEP_OPTIONS:
+            self._validation_label.configure(text="Please choose the thinking step.")
+            return
+        step = STEP_VALUES[STEP_OPTIONS.index(self._step_var.get())]
         layer = self._layer_var.get()
         if not layer:
             self._validation_label.configure(text="Please select 'Didn't see it' or 'Saw it, got it wrong'.")
             return
 
+        if self._primary_var.get() == PLACEHOLDER:
+            self._validation_label.configure(text="Please choose a primary theme.")
+            return
         primary_theme, err = self._resolve_primary_theme()
         if err:
             self._validation_label.configure(text=err)
@@ -569,29 +594,48 @@ class AnalyzeScreen(ctk.CTkFrame):
             from core.wizard_queue import mark_logged
             mark_logged(move_data["finding_ids"], blunder_id)
 
-        # Show loading state
-        self._results_frame.grid(row=self._row_counter, column=0, sticky="ew", padx=8, pady=8,
-                                  in_=self._right)
-        self._results_label.configure(text="Fetching puzzles and recommendation…")
+        # Show the loading state under the board; it stays until the next save
+        sign = "." if move_data["move_side"] == "white" else "..."
+        label = f"{move_data['move_number']}{sign}{move_data['move_san']}"
+        self._enrich_pending = (blunder_id, label)
+        self._show_enrich_text(label, "Fetching puzzles and recommendation…")
+        self._results_frame.grid(row=5, column=0, padx=12, pady=(4, 8), sticky="ew")
 
-        # Kick off async enrichment
+        # Kick off async enrichment; the UI thread polls for its result
         threading.Thread(
             target=self._async_enrich,
             args=(blunder_id, primary_theme, blunder_data),
             daemon=True,
         ).start()
+        if self._enrich_poll_id is None:
+            self._enrich_poll_id = self.after(300, self._poll_enrich)
 
         # Advance wizard — user can proceed while enrichment runs
         self._index += 1
         self._load_move()
 
     def _async_enrich(self, blunder_id, primary_theme, blunder_data):
+        """Worker thread: fetch puzzles + recommendation, save them, and hand the text to the UI.
+
+        Never touches Tk: the result goes into ``_enrich_results`` and ``_poll_enrich``
+        (UI thread) shows it. Any failure is reported as text so the box never hangs.
+        """
+        try:
+            text = self._enrich(blunder_id, primary_theme, blunder_data)
+        except Exception as exc:
+            text = f"Puzzles/recommendation failed: {exc}"
+        self._enrich_results[blunder_id] = text
+
+    def _enrich(self, blunder_id, primary_theme, blunder_data) -> str:
+        """Fetch puzzles and the LLM recommendation, store them on the blunder row, return the text."""
         import json as _json
         from core.puzzles import fetch_puzzles_for_theme
         from core.llm import get_recommendation
 
         cfg = load_config()
-        puzzles, puzzle_err = fetch_puzzles_for_theme(primary_theme, cfg.get("lichess_theme_map", {}))
+        puzzles, puzzle_err = fetch_puzzles_for_theme(
+            primary_theme, cfg.get("lichess_theme_map", {}),
+            secondary_theme=blunder_data.get("secondary_theme"))
 
         puzzle_urls = [p["url"] for p in puzzles]
         puzzle_text_lines = []
@@ -622,11 +666,29 @@ class AnalyzeScreen(ctk.CTkFrame):
             result_text += "Lichess puzzles:\n" + "\n".join(puzzle_text_lines) + "\n\n"
         result_text += "Recommendation:\n" + (
             rec or f"Recommendation unavailable: {rec_err}")
+        return result_text
 
-        def _update_label():
-            if self._results_label.winfo_exists():
-                self._results_label.configure(text=result_text)
-        self.after(0, _update_label)
+    def _show_enrich_text(self, label: str, text: str):
+        """Show ``text`` in the last-saved box, titled with the move it belongs to."""
+        self._results_label.configure(text=f"Saved {label}\n{text}")
+
+    def _poll_enrich(self):
+        """UI thread: show the last saved move's puzzles/recommendation once its worker is done.
+
+        Only Tk code runs here; the worker just stores its text in ``_enrich_results``.
+        Does nothing (and stops polling) once the screen is being closed.
+        """
+        self._enrich_poll_id = None
+        if self._closing or not self.winfo_exists():
+            return
+        if self._enrich_pending is None:
+            return
+        blunder_id, label = self._enrich_pending
+        if blunder_id in self._enrich_results:
+            self._show_enrich_text(label, self._enrich_results.pop(blunder_id))
+            self._enrich_pending = None
+            return
+        self._enrich_poll_id = self.after(300, self._poll_enrich)
 
     # ------------------------------------------------------------------ done
 

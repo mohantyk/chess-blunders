@@ -30,14 +30,26 @@ def fetch_puzzles(angle: str, count: int = 4) -> list[dict]:
     return results
 
 
-def fetch_puzzles_for_theme(theme: str, lichess_theme_map: dict, count: int = 4):
+def resolve_angle(theme: str, lichess_theme_map: dict, secondary_theme: str | None = None):
+    """The Lichess puzzle theme for ``theme``, falling back to the secondary theme's mapping.
+
+    Returns None when neither theme is mapped.
     """
-    Map our theme name to a Lichess angle and fetch puzzles.
+    return lichess_theme_map.get(theme) or (
+        lichess_theme_map.get(secondary_theme) if secondary_theme else None)
+
+
+def fetch_puzzles_for_theme(theme: str, lichess_theme_map: dict, count: int = 4,
+                            secondary_theme: str | None = None):
+    """
+    Map our theme name (or, failing that, the secondary theme) to a Lichess angle
+    and fetch puzzles.
     Returns (puzzles_list, error_message_or_None).
     """
-    angle = lichess_theme_map.get(theme)
+    angle = resolve_angle(theme, lichess_theme_map, secondary_theme)
     if not angle:
-        return [], f"No Lichess puzzle mapping for theme '{theme}' — try searching Lichess puzzle themes manually."
+        return [], (f"No Lichess puzzle theme is mapped for '{theme}' — add one in "
+                    "config.yaml (lichess_theme_map) or pick one under 'Other…'.")
     puzzles = fetch_puzzles(angle, count)
     if not puzzles:
         return [], "No targeted puzzles found for this theme — try searching Lichess puzzle themes manually."

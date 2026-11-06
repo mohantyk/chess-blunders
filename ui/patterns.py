@@ -1,6 +1,7 @@
 """Patterns dashboard — wizard-entry charts plus analysis-skill metrics (PRD F15)."""
 
 import collections
+import webbrowser
 import customtkinter as ctk
 import matplotlib
 matplotlib.use("Agg")
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from core.db import get_connection
+from core.db import get_connection, get_training_entries
 
 STEP_LABELS = {1: "Step 1\nMissed threat", 2: "Step 2\nMissed tactic",
                3: "Step 3\nWrong plan", 4: "Step 4\nNo blunder check"}
@@ -102,6 +103,53 @@ class PatternsScreen(ctk.CTkFrame):
         self._chart_prescription(scroll, rows, grid=(2, 1))
         self._chart_trend(scroll, rows, grid=(3, 0))
         self._summary_bar(scroll, rows, grid=(4, 0))
+        self._training_section(scroll, grid=(5, 0))
+
+    def _open_url(self, url: str):
+        """Open a puzzle link in the default web browser."""
+        webbrowser.open(url)
+
+    # ── training (saved recommendations and puzzles) ─────────────────────────
+
+    def _training_section(self, parent, grid, limit=20):
+        """List the latest wizard entries with their fix, AI recommendation and puzzle links.
+
+        Puzzle links are clickable labels that open in the browser. ``self.training_links``
+        records (url, label) for each so tests can click them.
+        """
+        self.training_links = []
+        frame = ctk.CTkFrame(parent, fg_color=CHART_BG, corner_radius=8)
+        frame.grid(row=grid[0], column=grid[1], columnspan=2, padx=6, pady=6, sticky="ew")
+        ctk.CTkLabel(frame, text="Training — recommendations and puzzles",
+                     font=ctk.CTkFont(size=15, weight="bold"), text_color=TEXT_COLOR).pack(
+            anchor="w", padx=14, pady=(10, 4))
+        entries = get_training_entries(limit)
+        for e in entries:
+            card = ctk.CTkFrame(frame, fg_color=DARK_BG, corner_radius=6)
+            card.pack(fill="x", padx=12, pady=4)
+            head = f"{e['label']} · {e['primary_theme'] or 'no theme'}"
+            if e["game"]:
+                head += f"   ({e['game']})"
+            ctk.CTkLabel(card, text=head, text_color=TEXT_COLOR, anchor="w",
+                         font=ctk.CTkFont(size=13, weight="bold")).pack(fill="x", padx=10,
+                                                                         pady=(6, 0))
+            if e["one_sentence_fix"]:
+                ctk.CTkLabel(card, text=f"Fix: {e['one_sentence_fix']}", text_color=TEXT_COLOR,
+                             anchor="w", justify="left", wraplength=900).pack(fill="x", padx=10)
+            ctk.CTkLabel(card, text=e["recommendation"] or "No recommendation yet",
+                         text_color=TEXT_COLOR if e["recommendation"] else "gray", anchor="w",
+                         justify="left", wraplength=900,
+                         font=ctk.CTkFont(size=12)).pack(fill="x", padx=10, pady=(0, 2))
+            for n, url in enumerate(e["puzzle_urls"], start=1):
+                link = ctk.CTkLabel(card, text=f"Puzzle {n}: {url}", text_color="#6ab0ff",
+                                    anchor="w", cursor="hand2",
+                                    font=ctk.CTkFont(size=12, underline=True))
+                link.pack(fill="x", padx=10)
+                link.bind("<Button-1>", lambda _e, u=url: self._open_url(u))
+                self.training_links.append((url, link))
+            ctk.CTkFrame(card, height=4, fg_color="transparent").pack()
+        if not entries:
+            ctk.CTkLabel(frame, text="No recommendation yet", text_color="gray").pack(pady=8)
 
     # ── analysis skill (F15) ─────────────────────────────────────────────────
 

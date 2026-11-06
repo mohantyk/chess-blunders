@@ -222,7 +222,7 @@ Every eval NAG (mainline or variation) and every line end. Bands from `eval_band
 
 ### F6 — Did my in-game candidates include the engine's best? (Built)
 
-At each decision point: engine top set = best move + at most one more within `candidate_window`. **Hit** if any `otb` candidate (incl. the played move) is in the top set; **post-game hit** if any untagged alternative is. No `otb` tags → candidates unknown (no finding), post-game hit still computed. Miss with known candidates → `candidate_miss`.
+At each decision point: engine top set = best move + at most one more within `candidate_window`. **Hit** if any `otb` candidate (incl. the played move) is in the top set, or leads to a position within `candidate_window` win% of the best move (so near-best moves are never a miss or a "rushed mistake"); **post-game hit** if any untagged alternative is. No `otb` tags → candidates unknown (no finding), post-game hit still computed. Miss with known candidates → `candidate_miss`.
 
 ### F7 — Did I pick the best of my candidates? (Built)
 
@@ -320,7 +320,9 @@ For each queued move: board (from-square green, to-square red), "Move 23 · Blac
 | 7 | Training prescription | from config |
 | 8 | Notes | pre-filled (comment + engine line) |
 
-**Skip** or **Save → next**. On save: write the row; in the background fetch 3–5 Lichess puzzles for the theme (`/api/puzzle/next?angle=…` via `lichess_theme_map`) and an LLM recommendation; show them when ready.
+**Skip** or **Save → next**. On save: write the row; in the background fetch 3–5 Lichess puzzles for the theme (`/api/puzzle/next?angle=…` via `lichess_theme_map`) and an LLM recommendation; show them when ready. The last saved move's puzzles and recommendation stay in a box under the board (labelled with the move) while the wizard moves on; the worker thread never touches Tk, the UI thread polls for its result.
+
+**Defaults are not choices:** Thinking step and Primary theme start on "— choose —"; engine/AI suggestions fill them, otherwise Save asks for a choice (as it does for "Did you see it?"). **Theme → puzzle:** `lichess_theme_map` maps themes to Lichess puzzle themes (e.g. 3-ply, 3-ply calculation, Calculation error, Calculation → `mateIn2`; Hanging Piece/Pawn → `hangingPiece`; Evaluation → `advantage`). With no mapping for the primary theme, the secondary theme's is used; with none, the results box says so. Adding a theme through "Other…" also offers a Lichess puzzle theme dropdown (default "none"). The **Patterns** screen ends with a **Training** section: the latest 20 entries with move, theme, one-sentence fix, recommendation ("No recommendation yet" if empty) and clickable puzzle links.
 
 | Step | Didn't see it | Saw it, got it wrong |
 |---|---|---|

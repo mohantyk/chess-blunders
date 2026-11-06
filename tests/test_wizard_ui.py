@@ -17,9 +17,11 @@ from tests.conftest import current_screen, pump  # noqa: E402
 from tests.stub_engine import StubEngine  # noqa: E402
 from tests.test_wizard_queue import PGN as BASE_PGN  # noqa: E402
 from ui import flow  # noqa: E402
-from ui.analyze import AnalyzeScreen  # noqa: E402
+from ui.analyze import PLACEHOLDER, STEP_OPTIONS, AnalyzeScreen  # noqa: E402
 from ui.games import GamesScreen  # noqa: E402
 from ui.review import ReviewScreen  # noqa: E402
+
+_REAL_ENRICH = AnalyzeScreen._async_enrich     # the game_id fixture replaces it with a no-op
 
 # Same game, with comments on 2.Nf3 (engine layer -> no LLM) and 6.d3? (no engine layer -> LLM).
 PGN = BASE_PGN.replace("2. Nf3 { [%clk 0:09:30] }", "2. Nf3 { developing [%clk 0:09:30] }") \
@@ -74,6 +76,8 @@ def test_save_links_findings(game_id, ui_env):
     gid, _ = game_id
     item = build_queue(gid)[0]
     wiz = _wizard(ui_env, gid)
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_var.set("Fork")
     wiz._on_save()
     pump(ui_env)
     conn = db.get_connection()
@@ -85,6 +89,56 @@ def test_save_links_findings(game_id, ui_env):
     logged = {f["id"]: f for f in review_store.load_findings(gid)}
     assert all(logged[fid]["status"] == "logged" for fid in item["finding_ids"])
     assert "Nf3" not in [q["move_san"] for q in build_queue(gid)]
+
+
+def test_save_requires_step_and_primary_theme(game_id, ui_env, monkeypatch):
+    """Untouched, un-suggested step / primary theme show a placeholder and block Save."""
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    assert wiz._step_var.get() == PLACEHOLDER and wiz._primary_var.get() == PLACEHOLDER
+    wiz._on_save()
+    assert "step" in wiz._validation_label.cget("text")
+    wiz._step_var.set(STEP_OPTIONS[1])
+    wiz._on_save()
+    assert "primary theme" in wiz._validation_label.cget("text")
+    conn = db.get_connection()
+    assert conn.execute("SELECT COUNT(*) FROM blunders").fetchone()[0] == 0
+    conn.close()
+    wiz._primary_var.set("Pin")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT step, primary_theme FROM blunders").fetchone()[:] == (2, "Pin")
+    conn.close()
+
+
+def test_last_saved_results_stay_visible_and_come_from_ui_thread(game_id, ui_env, monkeypatch):
+    """The saved move's puzzles/recommendation stay shown on the next move, labelled with the move."""
+    gid, _ = game_id
+    monkeypatch.setattr(AnalyzeScreen, "_async_enrich", _REAL_ENRICH)   # real worker, fakes below
+    from core import llm, puzzles
+    monkeypatch.setattr(puzzles, "fetch_puzzles",
+                        lambda angle, count=4: [{"url": "https://lichess.org/training/abc",
+                                                 "themes": ["fork"]}])
+    monkeypatch.setattr(llm, "get_recommendation", lambda ctx: ("Scan checks first.", None))
+    wiz = _wizard(ui_env, gid)
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_var.set("Fork")
+    wiz._on_save()
+    assert wiz._index == 1                               # moved on to the next move
+    pump(ui_env, until=lambda: "Scan checks first." in wiz._results_label.cget("text"))
+    text = wiz._results_label.cget("text")
+    assert text.startswith("Saved 2.Nf3") and "lichess.org/training/abc" in text
+    assert wiz._results_frame.winfo_manager() == "grid"
+    wiz._on_skip()
+    pump(ui_env)
+    assert wiz._results_frame.winfo_manager() == "grid"   # not hidden by the next move
+    assert "Scan checks first." in wiz._results_label.cget("text")
+    conn = db.get_connection()
+    row = conn.execute("SELECT puzzle_urls, llm_recommendation FROM blunders").fetchone()
+    conn.close()
+    assert "abc" in row[0] and row[1] == "Scan checks first."
 
 
 def test_games_list_wizard_button(game_id, ui_env):
@@ -144,21 +198,21 @@ def test_other_theme_box_below_dropdown_and_reset(game_id, ui_env, tmp_config):
     wiz._on_primary_change("Other…")
     pump(ui_env)
     assert _grid_row(wiz._primary_menu) is not None
-    assert _grid_row(wiz._primary_other_entry) == _grid_row(wiz._primary_menu) + 1
+    assert _grid_row(wiz._primary_other_box) == _grid_row(wiz._primary_menu) + 1
     wiz._primary_other_entry.insert(0, "half typed")
     wiz._on_primary_change("Pin")                  # back to a listed theme
-    assert _grid_row(wiz._primary_other_entry) is None
+    assert _grid_row(wiz._primary_other_box) is None
     assert wiz._primary_other_entry.get() == ""
 
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
     wiz._secondary_var.set("Other…")
     wiz._on_secondary_change("Other…")
-    assert _grid_row(wiz._secondary_other_entry) == _grid_row(wiz._secondary_menu) + 1
+    assert _grid_row(wiz._secondary_other_box) == _grid_row(wiz._secondary_menu) + 1
     wiz._on_skip()
     pump(ui_env)
-    assert _grid_row(wiz._primary_other_entry) is None
-    assert _grid_row(wiz._secondary_other_entry) is None
+    assert _grid_row(wiz._primary_other_box) is None
+    assert _grid_row(wiz._secondary_other_box) is None
     assert wiz._primary_var.get() != "Other…"
 
 
@@ -168,6 +222,7 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     wiz = _wizard(ui_env, gid)
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
+    wiz._step_var.set(STEP_OPTIONS[0])
     wiz._primary_other_entry.insert(0, "3-ply")
     wiz._on_save()
     pump(ui_env)
@@ -181,12 +236,29 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     assert "- 3-ply" in text
 
 
+def test_other_theme_with_lichess_puzzle_theme(game_id, ui_env, tmp_config):
+    """A custom theme can be given a Lichess puzzle theme, stored in lichess_theme_map."""
+    from core.config import load_config
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    assert wiz._lichess_theme_var.get() == "none"
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_other_entry.insert(0, "Overloading")
+    wiz._lichess_theme_var.set("deflection")
+    wiz._on_save()
+    pump(ui_env)
+    assert load_config()["lichess_theme_map"]["Overloading"] == "deflection"
+
+
 def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
     """Choosing a listed theme after using 'Other…' saves the listed theme."""
     gid, _ = game_id
     wiz = _wizard(ui_env, gid)
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
+    wiz._step_var.set(STEP_OPTIONS[0])
     wiz._primary_var.set("Pin")
     wiz._on_primary_change("Pin")
     wiz._on_save()

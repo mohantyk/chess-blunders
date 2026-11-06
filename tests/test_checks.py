@@ -125,6 +125,27 @@ def test_candidate_miss():
     assert miss.user_value == "Nf3, Bc4, Nc3"
 
 
+def test_near_best_played_move_is_a_hit():
+    """Played Nf3 loses less than the window vs d4, though outside the top-2 list: no miss."""
+    stub = StubEngine(0).set("e4 e5", [("d4", 100), ("Bc4", 95), ("Nc3", 90), ("Nf3", 80)])
+    stub.set("e4 e5 d4", 100).set("e4 e5 Nf3", 98)
+    (res,), findings = check_decisions(tree_of(DP_PGN), stub, CFG)
+    assert res.hit is True and res.layer_prefill is None
+    assert by_type(findings, "candidate_miss") == []
+
+
+def test_near_best_move_is_not_rushed():
+    """A near-best move creates no candidate_miss, so it cannot become a 'rushed mistake'."""
+    pgn = DP_PGN.replace("2. Nf3 ", "2. Nf3 { [%clk 0:09:50] } ").replace(
+        "1. e4 e5", "1. e4 { [%clk 0:09:55] } e5")
+    pgn = '[TimeControl "600"]\n' + pgn
+    stub = StubEngine(0).set("e4 e5", [("d4", 100), ("Nf3", 98)])
+    stub.set("e4 e5 d4", 100).set("e4 e5 Nf3", 98).set("e4 e5 Bc4", 98).set("e4 e5 Nc3", 98)
+    review = review_game(tree_of(pgn), stub, CFG)
+    assert by_type(review.findings, "candidate_miss") == []
+    assert by_type(review.findings, "rushed") == []
+
+
 def test_candidate_window_is_configurable():
     """A wider window lets the second line into the top set."""
     stub = StubEngine(0).set("e4 e5", [("d4", 100), ("Nf3", -50)])
