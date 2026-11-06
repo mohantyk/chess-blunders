@@ -3,11 +3,11 @@
 From a read-only review of the code, PRD and game 1 (Shrey2019) data. Status in brackets.
 
 ## Fix first (bugs that undermine the app's purpose)
-1. **Puzzles + recommendation never seen.** `_on_save` shows the results box, then `_load_move` hides it at once; nothing else reads `puzzle_urls` / `llm_recommendation`. Add a Training panel on Patterns. [in progress]
-2. **Theme → puzzle map gaps.** "Hanging Piece", "Hanging Pawn", "3-ply", "Evaluation" unmapped; "Calculation error" → `hangingPiece` is wrong. Ask for a puzzle theme when adding via "Other…". 3-ply / calculation themes → `mateIn2`. Add "3-ply calculation" as a built-in theme. [in progress]
-3. **Near-best moves queued as mistakes.** Top set capped at 2 lines (`core/checks.py` `check_decisions`), so 19...Rfd8 (lost 3.9 < 5 window) became `candidate_miss` + "rushed mistake". [in progress]
-4. **Defaults saved as if chosen.** If pre-fill fails, Save stores Step 1 / "Fork". Untouched, un-suggested fields should require a choice. [in progress]
-5. **Tk called from a worker thread** in the wizard's recommendation step (`_async_enrich` → `self.after`); errors after the wizard is gone. [in progress]
+1. **Puzzles + recommendation never seen.** `_on_save` shows the results box, then `_load_move` hides it at once; nothing else reads `puzzle_urls` / `llm_recommendation`. Add a Training panel on Patterns. [done]
+2. **Theme → puzzle map gaps.** "Hanging Piece", "Hanging Pawn", "3-ply", "Evaluation" unmapped; "Calculation error" → `hangingPiece` is wrong. Ask for a puzzle theme when adding via "Other…". 3-ply / calculation themes → `mateIn2`. Add "3-ply calculation" as a built-in theme. [done]
+3. **Near-best moves queued as mistakes.** Top set capped at 2 lines (`core/checks.py` `check_decisions`), so 19...Rfd8 (lost 3.9 < 5 window) became `candidate_miss` + "rushed mistake". [done]
+4. **Defaults saved as if chosen.** If pre-fill fails, Save stores Step 1 / "Fork". Untouched, un-suggested fields should require a choice. [done]
+5. **Tk called from a worker thread** in the wizard's recommendation step (`_async_enrich` → `self.after`); errors after the wizard is gone. [done]
 
 ## Better use of existing data
 6. Per-game habit counts on every move: "best was forcing, I played quiet" (step 2) and "ignored opponent's threat" (step 1, null-move threat). E.g. Nf4+ was also best at move 13.
