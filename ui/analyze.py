@@ -5,7 +5,8 @@ import threading
 import webbrowser
 import customtkinter as ctk
 
-from core.config import load_config, append_primary_theme, append_secondary_theme
+from core.config import (load_config, append_primary_theme, append_secondary_theme,
+                         set_lichess_theme, COMMON_LICHESS_THEMES)
 from core.db import insert_blunder, update_blunder
 from core.board_render import fen_to_ctk_image
 from core.llm import model_label
@@ -155,7 +156,17 @@ class AnalyzeScreen(ctk.CTkFrame):
             command=self._on_primary_change,
         )
         self._primary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
-        self._primary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        # "Other…" row: new theme name + the Lichess puzzle theme to train it with
+        self._primary_other_box = ctk.CTkFrame(self._right, fg_color="transparent")
+        self._primary_other_box.columnconfigure(0, weight=1)
+        self._primary_other_entry = ctk.CTkEntry(self._primary_other_box,
+                                                 placeholder_text="Enter new theme…")
+        self._primary_other_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._lichess_theme_var = ctk.StringVar(value="none")
+        self._lichess_theme_menu = ctk.CTkOptionMenu(
+            self._primary_other_box, variable=self._lichess_theme_var, width=170,
+            values=["none"] + COMMON_LICHESS_THEMES)
+        self._lichess_theme_menu.grid(row=0, column=1)
         self._primary_other_row = row; row += 1      # shown here, under the dropdown
 
         # Secondary theme
@@ -168,6 +179,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._secondary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._secondary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._secondary_other_box = self._secondary_other_entry   # no extra widgets here
         self._secondary_other_row = row; row += 1
 
         # One-sentence fix
@@ -457,22 +469,24 @@ class AnalyzeScreen(ctk.CTkFrame):
 
     def _on_primary_change(self, value):
         """Show the "new theme" box under the primary dropdown only while "Other…" is chosen."""
-        self._toggle_other_entry(self._primary_other_entry, self._primary_other_row,
-                                 value == "Other…")
+        self._toggle_other_entry(self._primary_other_box, self._primary_other_entry,
+                                 self._primary_other_row, value == "Other…")
+        if value != "Other…":
+            self._lichess_theme_var.set("none")
 
     def _on_secondary_change(self, value):
         """Show the "new theme" box under the secondary dropdown only while "Other…" is chosen."""
-        self._toggle_other_entry(self._secondary_other_entry, self._secondary_other_row,
-                                 value == "Other…")
+        self._toggle_other_entry(self._secondary_other_box, self._secondary_other_entry,
+                                 self._secondary_other_row, value == "Other…")
 
-    def _toggle_other_entry(self, entry, row: int, show: bool):
-        """Grid ``entry`` in its own row below its dropdown, or hide and clear it."""
+    def _toggle_other_entry(self, box, entry, row: int, show: bool):
+        """Grid ``box`` (holding ``entry``) in its own row below its dropdown, or hide and clear it."""
         if show:
-            entry.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
+            box.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
             entry.focus_set()
         else:
             entry.delete(0, "end")
-            entry.grid_remove()
+            box.grid_remove()
 
     def _add_theme_option(self, menu, var, custom: str):
         """Put a newly saved custom theme into its dropdown (before "Other…") and select it."""
@@ -490,6 +504,7 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Primary theme: enter a theme name or choose from the list."
             append_primary_theme(custom)
+            set_lichess_theme(custom, self._lichess_theme_var.get())
             self._add_theme_option(self._primary_menu, self._primary_var, custom)
             self._on_primary_change(custom)
             return custom, None
@@ -591,7 +606,9 @@ class AnalyzeScreen(ctk.CTkFrame):
         from core.llm import get_recommendation
 
         cfg = load_config()
-        puzzles, puzzle_err = fetch_puzzles_for_theme(primary_theme, cfg.get("lichess_theme_map", {}))
+        puzzles, puzzle_err = fetch_puzzles_for_theme(
+            primary_theme, cfg.get("lichess_theme_map", {}),
+            secondary_theme=blunder_data.get("secondary_theme"))
 
         puzzle_urls = [p["url"] for p in puzzles]
         puzzle_text_lines = []

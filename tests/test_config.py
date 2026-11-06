@@ -43,3 +43,21 @@ def test_save_config_new_file(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_PATH", str(path))
     config.ensure_config()
     assert config.load_config()["primary_themes"] == config.DEFAULTS["primary_themes"]
+
+
+def test_set_lichess_theme(cfg_path):
+    """A chosen Lichess theme is stored in the map; "none" stores nothing."""
+    config.set_lichess_theme("Overloading", "deflection")
+    config.set_lichess_theme("Vague", "none")
+    cfg = config.load_config()
+    assert cfg["lichess_theme_map"]["Overloading"] == "deflection"
+    assert "Vague" not in cfg["lichess_theme_map"]
+
+
+def test_default_theme_map_covers_owner_themes():
+    """Owner themes map to the intended Lichess puzzle themes."""
+    m = config.DEFAULTS["lichess_theme_map"]
+    assert m["Calculation error"] == m["3-ply"] == m["3-ply calculation"] == m["Calculation"] == "mateIn2"
+    assert m["Hanging Piece"] == m["Hanging Pawn"] == "hangingPiece"
+    assert m["Evaluation"] == "advantage"
+    assert "3-ply calculation" in config.DEFAULTS["primary_themes"]

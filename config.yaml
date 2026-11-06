@@ -17,6 +17,7 @@ primary_themes:
 - Evaluation
 - Hanging Piece
 - 3-ply
+- 3-ply calculation
 secondary_themes:
 - None
 - Time pressure
@@ -49,7 +50,13 @@ lichess_theme_map:
   Piece activity: quietMove
   King safety: kingsideAttack
   Endgame technique: endgame
-  Calculation error: hangingPiece
+  Calculation error: mateIn2
+  3-ply: mateIn2
+  3-ply calculation: mateIn2
+  Calculation: mateIn2
+  Hanging Piece: hangingPiece
+  Hanging Pawn: hangingPiece
+  Evaluation: advantage
 missed_win_threshold: 150
 winning_threshold: 150
 lichess_username: i_will_analyze_games

@@ -10,10 +10,11 @@ DEFAULTS = {
         "Fork", "Pin", "Skewer", "Back rank", "Mating net", "Discovered attack",
         "Zwischenzug", "Piece activity", "Pawn structure", "King safety",
         "Prophylaxis", "Calculation error", "Endgame technique", "Opening prep gap",
+        "3-ply", "3-ply calculation",
     ],
     "secondary_themes": [
         "None", "Time pressure", "Opening prep gap", "Endgame technique",
-        "King safety", "Opponent surprise", "Rushed (time available)",
+        "King safety", "Opponent surprise", "Calculation", "Rushed (time available)",
     ],
     "training_prescriptions": [
         "Tactics puzzles (general)", "Fork puzzles", "Pin and skewer puzzles",
@@ -26,7 +27,9 @@ DEFAULTS = {
         "Mating net": "matingNet", "Discovered attack": "discoveredAttack",
         "Zwischenzug": "zwischenzug", "Piece activity": "quietMove",
         "King safety": "kingsideAttack", "Endgame technique": "endgame",
-        "Calculation error": "hangingPiece",
+        "Calculation error": "mateIn2", "3-ply": "mateIn2", "3-ply calculation": "mateIn2",
+        "Calculation": "mateIn2", "Hanging Piece": "hangingPiece",
+        "Hanging Pawn": "hangingPiece", "Evaluation": "advantage",
     },
     "missed_win_threshold": 150,
     "winning_threshold": 150,
@@ -66,6 +69,16 @@ DEFAULTS = {
         "only_move_window": 5,          # □ but another move within this of best = mismatch
     },
 }
+
+
+# Common Lichess puzzle themes offered when a new theme is added through "Other…".
+COMMON_LICHESS_THEMES = [
+    "fork", "pin", "skewer", "discoveredAttack", "hangingPiece", "backRankMate",
+    "mateIn1", "mateIn2", "mateIn3", "matingNet", "trappedPiece", "sacrifice",
+    "deflection", "attraction", "clearance", "quietMove", "zwischenzug", "advantage",
+    "crushing", "equality", "defensiveMove", "endgame", "kingsideAttack",
+    "queensideAttack", "exposedKing", "intermezzo", "xRayAttack",
+]
 
 
 def ensure_config():
@@ -143,3 +156,15 @@ def append_secondary_theme(theme: str):
     if theme not in cfg["secondary_themes"]:
         cfg["secondary_themes"].append(theme)
         save_config(cfg)
+
+
+def set_lichess_theme(theme: str, angle: str):
+    """Map one of my themes to a Lichess puzzle theme in config.yaml (``lichess_theme_map``).
+
+    A blank ``angle`` or "none" does nothing, so an unmapped theme stays unmapped.
+    """
+    if not angle or angle.strip().lower() == "none":
+        return
+    cfg = load_config()
+    cfg["lichess_theme_map"][theme] = angle.strip()
+    save_config(cfg)

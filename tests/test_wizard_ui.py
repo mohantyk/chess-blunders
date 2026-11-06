@@ -144,21 +144,21 @@ def test_other_theme_box_below_dropdown_and_reset(game_id, ui_env, tmp_config):
     wiz._on_primary_change("Other…")
     pump(ui_env)
     assert _grid_row(wiz._primary_menu) is not None
-    assert _grid_row(wiz._primary_other_entry) == _grid_row(wiz._primary_menu) + 1
+    assert _grid_row(wiz._primary_other_box) == _grid_row(wiz._primary_menu) + 1
     wiz._primary_other_entry.insert(0, "half typed")
     wiz._on_primary_change("Pin")                  # back to a listed theme
-    assert _grid_row(wiz._primary_other_entry) is None
+    assert _grid_row(wiz._primary_other_box) is None
     assert wiz._primary_other_entry.get() == ""
 
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
     wiz._secondary_var.set("Other…")
     wiz._on_secondary_change("Other…")
-    assert _grid_row(wiz._secondary_other_entry) == _grid_row(wiz._secondary_menu) + 1
+    assert _grid_row(wiz._secondary_other_box) == _grid_row(wiz._secondary_menu) + 1
     wiz._on_skip()
     pump(ui_env)
-    assert _grid_row(wiz._primary_other_entry) is None
-    assert _grid_row(wiz._secondary_other_entry) is None
+    assert _grid_row(wiz._primary_other_box) is None
+    assert _grid_row(wiz._secondary_other_box) is None
     assert wiz._primary_var.get() != "Other…"
 
 
@@ -179,6 +179,21 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     text = tmp_config.read_text(encoding="utf-8")
     assert "# my settings" in text and "# main ideas" in text and "# plies" in text
     assert "- 3-ply" in text
+
+
+def test_other_theme_with_lichess_puzzle_theme(game_id, ui_env, tmp_config):
+    """A custom theme can be given a Lichess puzzle theme, stored in lichess_theme_map."""
+    from core.config import load_config
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    assert wiz._lichess_theme_var.get() == "none"
+    wiz._primary_other_entry.insert(0, "Overloading")
+    wiz._lichess_theme_var.set("deflection")
+    wiz._on_save()
+    pump(ui_env)
+    assert load_config()["lichess_theme_map"]["Overloading"] == "deflection"
 
 
 def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
