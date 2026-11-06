@@ -34,3 +34,18 @@ def test_last_move_highlight():
     """The last move's squares are marked."""
     svg = board_svg(AFTER_E4, last_move=chess.Move.from_uci("e2e4"))
     assert "lastmove" in svg
+
+
+def test_wizard_board_orientation(monkeypatch):
+    """fen_to_ctk_image draws from the given side (the wizard passes my colour)."""
+    from core import board_render
+    captured = []
+    monkeypatch.setattr(board_render, "svg_to_ctk_image", lambda svg, size: captured.append(svg))
+    move = chess.Move.from_uci("e7e5")
+    board_render.fen_to_ctk_image(AFTER_E4, size=200, move=move, orientation="black")
+    board_render.fen_to_ctk_image(AFTER_E4, size=200, move=move)
+    black, white = captured
+    assert black != white
+    assert black == board_svg(AFTER_E4, size=200, orientation="black",
+                              arrows=[(move.from_square, move.to_square, "#cc0000")],
+                              fill={move.from_square: "#aaffaa", move.to_square: "#ffaaaa"})

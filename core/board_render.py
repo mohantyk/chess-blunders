@@ -69,17 +69,19 @@ def svg_to_ctk_image(svg_str: str, size: int):
     return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(size, size))
 
 
-def fen_to_ctk_image(fen: str, size: int = 380, move: chess.Move = None):
+def fen_to_ctk_image(fen: str, size: int = 380, move: chess.Move = None,
+                     orientation: str = "white"):
     """Wizard board: the position with ``move`` highlighted (green from, red to) and arrowed.
 
-    Kept with its original behaviour for the existing wizard screen.
+    orientation: "white" or "black" side at the bottom (the wizard passes my colour).
     """
     fill, arrows = {}, []
     if move:
         fill[move.from_square] = "#aaffaa"
         fill[move.to_square] = "#ffaaaa"
         arrows = [(move.from_square, move.to_square, "#cc0000")]
-    return svg_to_ctk_image(board_svg(fen, size=size, arrows=arrows, fill=fill), size)
+    return svg_to_ctk_image(board_svg(fen, size=size, arrows=arrows, fill=fill,
+                                      orientation=orientation), size)
 
 
 def render_position(fen: str, size: int = 380, **kwargs):

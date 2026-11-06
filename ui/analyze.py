@@ -217,7 +217,8 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Board
         try:
-            img = fen_to_ctk_image(move_data["fen"], size=280, move=move_data.get("move_obj"))
+            img = fen_to_ctk_image(move_data["fen"], size=280, move=move_data.get("move_obj"),
+                                   orientation=self._user_color or "white")
             self._board_image_ref = img
             self._board_label.configure(image=img, text="")
         except Exception as e:

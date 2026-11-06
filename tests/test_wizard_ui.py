@@ -107,3 +107,15 @@ def test_games_list_wizard_button(game_id, ui_env):
         wiz._on_skip()
         pump(ui_env)
     assert isinstance(current_screen(ui_env), GamesScreen)
+
+
+def test_wizard_board_uses_my_colour(game_id, ui_env, monkeypatch):
+    """The wizard board is drawn from the side I played."""
+    import ui.analyze as analyze
+    gid, _ = game_id
+    seen = []
+    monkeypatch.setattr(analyze, "fen_to_ctk_image",
+                        lambda fen, size, move=None, orientation="white": seen.append(orientation))
+    flow.open_wizard(ui_env, gid, "black", build_queue(gid), on_done=None)
+    pump(ui_env)
+    assert seen and set(seen) == {"black"}
