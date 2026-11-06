@@ -126,3 +126,20 @@ def test_sample_chapter_queue(tmp_db, sample_games):
     gid = db.insert_game(game_pgn(sample_games[0]), source_key="s1", user_color="white")
     q = wizard_queue.build_queue(gid)
     assert [(i["move_san"], i["flag_type"]) for i in q] == [("Be2", "mistake"), ("Rff1", "blunder")]
+
+
+def test_delete_entries_requeues_moves(game_id):
+    """Deleting a saved entry backs up, unlinks its findings (seen) and queues the move again."""
+    import glob
+    item = wizard_queue.build_queue(game_id)[0]
+    bid = db.insert_blunder(game_id, {k: item[k] for k in (
+        "move_number", "move_side", "move_san", "fen", "flag_type")})
+    wizard_queue.mark_logged(item["finding_ids"], bid)
+    assert item["move_san"] not in [q["move_san"] for q in wizard_queue.build_queue(game_id)]
+    assert wizard_queue.delete_entries([bid]) == 1
+    assert glob.glob(db.DB_PATH + ".bak-*")
+    statuses = {f["id"]: f for f in review_store.load_findings(game_id)}
+    assert all(statuses[i]["status"] == "seen" and statuses[i]["blunder_id"] is None
+               for i in item["finding_ids"])
+    assert item["move_san"] in [q["move_san"] for q in wizard_queue.build_queue(game_id)]
+    assert wizard_queue.delete_entries([]) == 0

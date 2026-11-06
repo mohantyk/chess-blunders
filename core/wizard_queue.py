@@ -148,3 +148,21 @@ def mark_logged(finding_ids: list, blunder_id: int) -> None:
         "WHERE id = ?", [(blunder_id, fid) for fid in finding_ids])
     conn.commit()
     conn.close()
+
+
+def delete_entries(blunder_ids: list) -> int:
+    """Delete wizard entries and put their findings back to "seen" so the moves queue again.
+
+    Backs up blunders.db first. Returns the number of entries deleted.
+    """
+    if not blunder_ids:
+        return 0
+    db.backup_db("delete wizard entries " + ", ".join(str(i) for i in blunder_ids))
+    conn = db.get_connection()
+    marks = ", ".join("?" * len(blunder_ids))
+    conn.execute(f"UPDATE findings SET status = 'seen', blunder_id = NULL, "
+                 f"updated_at = datetime('now') WHERE blunder_id IN ({marks})", blunder_ids)
+    deleted = conn.execute(f"DELETE FROM blunders WHERE id IN ({marks})", blunder_ids).rowcount
+    conn.commit()
+    conn.close()
+    return deleted
