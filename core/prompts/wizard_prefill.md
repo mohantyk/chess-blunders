@@ -19,4 +19,5 @@ Rules:
 - Use only the facts given. Do not invent moves or variations that are not in the facts.
 - The engine guesses are computed from the position; keep them unless the player's comment or considered moves clearly point elsewhere.
 - If the player considered the engine's best move during the game, the layer is got_it_wrong.
+- If the player's comment names the problem (e.g. "leaves two unprotected pieces", "missed the fork", "no time"), let it guide the theme and the fix.
 - Answer with the JSON object only.

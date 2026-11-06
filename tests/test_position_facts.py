@@ -141,3 +141,13 @@ def test_theme_limited_to_allowed_list():
                       best_motifs=["fork"], played_eval="0.00", loss=40, reply_san=None,
                       reply_pv=[], reply_motifs=[], left_hanging=[])
     assert guess_theme(f, 2, ["Pin"]) is None
+
+
+def test_step1_ignored_existing_threat():
+    """The opponent already threatened Bf2+; my quiet move ignores it and they play it -> step 1."""
+    stub = StubEngine(0).set_fen(HANG_FEN, [("Kd1", 0)])
+    stub.set_fen(null_fen(HANG_FEN), [("Bf2+", -300)])
+    stub.set_fen(after_fen(HANG_FEN, "Ra2"), [("Bf2+", -300)])
+    f = gather_facts(HANG_FEN, chess.Board(HANG_FEN).parse_san("Ra2"), stub)
+    assert not f.allowed_tactic and f.threat_existed and f.reply_san == f.threat_san == "Bf2+"
+    assert guess_step(f) == 1

@@ -385,6 +385,8 @@ def guess_step(f: PositionFacts) -> int:
     """Thinking step from the facts.
 
     * my move allowed a tactic and the threat was already there -> 1
+    * the opponent already threatened something and my move ignored it (their
+      best reply is that same threatening move) -> 1
     * my move allowed a tactic that it created -> 4 (unless I also missed a
       real tactic of my own, which is the bigger lesson -> 2)
     * the best move was my own check / tactic -> 2
@@ -396,6 +398,8 @@ def guess_step(f: PositionFacts) -> int:
         if f.best_motifs and not f.played_best:
             return 2
         return 4
+    if f.threat_existed and f.threat_san and f.reply_san == f.threat_san:
+        return 1
     if f.my_tactic:
         return 2
     return 3
