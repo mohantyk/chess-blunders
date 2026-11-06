@@ -94,6 +94,10 @@ RUNS_NEW_COLUMNS = {
     "move_evals_json": "TEXT",     # my mainline moves: played vs best, engine evals
 }
 
+FINDINGS_NEW_COLUMNS = {
+    "user_answer": "TEXT",         # my pick on a quiz card (e.g. which candidate was best)
+}
+
 REVIEW_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_findings_game ON findings(game_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_runs_game ON analysis_runs(game_id)",
@@ -190,13 +194,16 @@ def init_db():
     missing_t = [t for t in REVIEW_TABLES if t not in _tables(conn)]
     missing_r = ([c for c in RUNS_NEW_COLUMNS if c not in _table_columns(conn, "analysis_runs")]
                  if "analysis_runs" in _tables(conn) else [])
-    schema_change = missing or missing_b or missing_t or missing_r
+    missing_f = ([c for c in FINDINGS_NEW_COLUMNS if c not in _table_columns(conn, "findings")]
+                 if "findings" in _tables(conn) else [])
+    schema_change = missing or missing_b or missing_t or missing_r or missing_f
     # sqlite3 commits ALTER TABLE immediately, so back up *before* touching anything.
     if existed and (schema_change or _plan_source_key_backfill(conn)):
         conn.close()
         backup_db("schema migration: " + ", ".join(
             [f"games.{c}" for c in missing] + [f"blunders.{c}" for c in missing_b]
-            + missing_t + [f"analysis_runs.{c}" for c in missing_r])
+            + missing_t + [f"analysis_runs.{c}" for c in missing_r]
+            + [f"findings.{c}" for c in missing_f])
             if schema_change else "source_key backfill")
         conn = get_connection()
     for col in missing:
@@ -208,6 +215,9 @@ def init_db():
     for col, kind in RUNS_NEW_COLUMNS.items():
         if col not in _table_columns(conn, "analysis_runs"):
             conn.execute(f"ALTER TABLE analysis_runs ADD COLUMN {col} {kind}")
+    for col, kind in FINDINGS_NEW_COLUMNS.items():
+        if col not in _table_columns(conn, "findings"):
+            conn.execute(f"ALTER TABLE findings ADD COLUMN {col} {kind}")
     for ddl in REVIEW_INDEXES:
         conn.execute(ddl)
     planned = _plan_source_key_backfill(conn)

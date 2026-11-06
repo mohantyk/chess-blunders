@@ -83,7 +83,7 @@ def test_hints_shown_answers_hidden(saved_game, ui_env):
     opp = _finding(screen, "line_break_opp")
     assert opp["hint_text"] in texts and opp["answer_text"] not in texts
     moves = screen.moves.get("1.0", "end")
-    assert "2. Nf3 ●" in moves and "(2. Bc4 {otb} 2... Nc6 ●)" in moves  # line end: missing eval
+    assert "2\t♘f3 ●\t…" in moves and "2.♗c4 otb 2...♘c6 ●" in moves   # line end: missing eval
     assert "evals right 0/1" in screen.summary.cget("text")
 
 
@@ -99,7 +99,7 @@ def test_navigation_and_highlight(saved_game, ui_env):
     screen.nav_end()
     assert screen.move_info.cget("text").startswith("4.Qxf7#")
     ranges = screen.moves.tag_ranges("current")
-    assert screen.moves.get(ranges[0], ranges[1]) == "Qxf7#"
+    assert screen.moves.get(ranges[0], ranges[1]) == "♕xf7#"
     screen.nav_home()
     assert screen.moves.tag_ranges("current") == ()
 
@@ -244,3 +244,62 @@ def test_games_list_opens_review(saved_game, ui_env):
     current_screen(ui_env)._on_back()
     pump(ui_env)
     assert isinstance(current_screen(ui_env), GamesScreen)
+
+
+CHOICE_PGN = """[White "me"]
+[Black "them"]
+[Result "*"]
+
+1. e4 e5 2. Nf3 (2. Bc4 { otb } Nc6) 2... Nc6 *
+"""
+
+
+@pytest.fixture
+def choice_game(ui_env):
+    """A game where I considered 2.Bc4 (better) but played 2.Nf3 -> a chose_worse finding."""
+    gid = db.insert_game(CHOICE_PGN, white="me", black="them", source_key="c",
+                         user_color="white", analysis_hash=analysis_hash(CHOICE_PGN))
+    stub = StubEngine(0).set("e4 e5", [("Bc4", 200)]).set("e4 e5 Bc4", 200).set("e4 e5 Nf3", 0)
+    tree = build_tree(chess.pgn.read_game(io.StringIO(CHOICE_PGN)), "white")
+    review_store.save_review(gid, review_game(tree, stub, dict(DEFAULTS["review"])),
+                             "Stub", {}, analysis_hash(CHOICE_PGN))
+    return gid
+
+
+def _buttons(widget):
+    """All CTkButtons under a widget, by text."""
+    out = {}
+    for w in widget.winfo_children():
+        if isinstance(w, ctk.CTkButton):
+            out[w.cget("text")] = w
+        out.update(_buttons(w))
+    return out
+
+
+def test_choice_quiz_buttons_store_pick_and_reveal(choice_game, ui_env):
+    """The Choice card offers my candidates; a wrong pick is stored and the answer shown."""
+    screen = _open(ui_env, choice_game)
+    worse = _finding(screen, "chose_worse")
+    texts = " ".join(_texts(screen.findings_frame))
+    assert "which of the moves you considered was best?" in texts
+    assert worse["answer_text"] not in texts
+    buttons = _buttons(screen.findings_frame)
+    assert {"Nf3", "Bc4", "Show answer"} <= set(buttons)
+    buttons["Nf3"].invoke()
+    pump(ui_env)
+    texts = " ".join(_texts(screen.findings_frame))
+    assert "✗ You picked Nf3; Bc4 was better." in texts and worse["answer_text"] in texts
+    assert ("f1", "c4", "engine") in screen.board_drawings()[0]
+    stored = {f["id"]: f for f in review_store.load_findings(choice_game)}[worse["id"]]
+    assert stored["user_answer"] == "Nf3" and stored["status"] == "seen"
+    reopened = _open(ui_env, choice_game)                          # the pick is remembered
+    assert "✗ You picked Nf3" in " ".join(_texts(reopened.findings_frame))
+    assert "Bc4" not in _buttons(reopened.findings_frame)
+
+
+def test_choice_quiz_right_pick(choice_game, ui_env):
+    """Picking the better candidate says so."""
+    screen = _open(ui_env, choice_game)
+    _buttons(screen.findings_frame)["Bc4"].invoke()
+    pump(ui_env)
+    assert "✓ Right: Bc4" in " ".join(_texts(screen.findings_frame))

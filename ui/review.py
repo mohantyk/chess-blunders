@@ -22,7 +22,8 @@ from core.board_render import render_position
 from core.checks import BAND_SYMBOLS, compare_bands, fmt_clock, time_use
 from core.config import load_config
 from core.review_nav import (
-    EVAL_BANDS, Navigator, best_move_arrow, group_findings, move_tree_segments,
+    EVAL_BANDS, Navigator, best_move_arrow, choice_verdict, considered_moves, group_findings,
+    move_list_segments,
 )
 from core.run_review import game_tree, load_game
 
@@ -36,6 +37,12 @@ TYPE_LABELS = {
 }
 LINE_COLORS = {"main": ("gray10", "gray92"), "otb": ("#1b7a2a", "#7ed98b"),
                "post": ("#2a5aa0", "#8fb6ee")}
+# Lichess-like glyph colours (light, dark).
+GLYPH_COLORS = {"glyph_brilliant": ("#168a8a", "#22ccbb"), "glyph_good": ("#3b8a2a", "#7ac25a"),
+                "glyph_interesting": ("#9a3fb0", "#ea6cf0"), "glyph_dubious": ("#9a8a10", "#56b4e9"),
+                "glyph_mistake": ("#c06000", "#e69f00"), "glyph_blunder": ("#c02020", "#df5353"),
+                "glyph_only": ("gray30", "gray75"), "glyph": ("gray30", "gray75")}
+MOVE_TABS = (44, 150)   # pixel tab stops: number | White | Black
 
 
 def _ratio(pair) -> str:
@@ -167,12 +174,32 @@ class ReviewScreen(ctk.CTkFrame):
         self.findings_frame.grid(row=1, column=0, sticky="nsew")
 
     def _fill_moves(self) -> None:
-        """Write the move tree into the text box with colours and clickable moves."""
+        """Write the move list (Lichess-style rows and blocks) with colours and clickable moves.
+
+        Tag order matters: Tk gives later-created tags priority, so the row
+        and block backgrounds come first and the "current" highlight last.
+        """
         box = self.moves
-        for kind, (light, dark) in LINE_COLORS.items():
-            box.tag_config(kind, foreground=dark if ctk.get_appearance_mode() == "Dark"
-                           else light)
+        dark = ctk.get_appearance_mode() == "Dark"
+
+        def pick(pair):
+            """The (light, dark) colour for the current appearance mode."""
+            return pair[1] if dark else pair[0]
+
+        box.tag_config("row", tabs=MOVE_TABS, lmargin1=8, spacing1=2, spacing3=2)
+        box.tag_config("row_odd", background=pick(("gray90", "gray19")))
+        box.tag_config("row_even", background=pick(("gray96", "gray15")))
+        box.tag_config("var_block", lmargin1=22, lmargin2=34, rmargin=8, spacing1=3, spacing3=3,
+                       background=pick(("gray86", "gray23")))
+        box.tag_config("comment_block", lmargin1=14, lmargin2=14, rmargin=8, spacing1=4,
+                       spacing3=6, foreground=pick(("gray25", "gray80")))
+        for kind, colors in LINE_COLORS.items():
+            box.tag_config(kind, foreground=pick(colors))
         box.tag_config("comment", foreground="gray60")
+        box.tag_config("sub", foreground=pick(("gray45", "gray58")))
+        box.tag_config("tree", foreground="gray50")
+        for tag, colors in GLYPH_COLORS.items():
+            box.tag_config(tag, foreground=pick(colors))
         box.tag_config("eval", foreground="#e0a040")
         box.tag_config("marker", foreground="#e05050")
         box.tag_config("num", foreground="gray55")
@@ -182,7 +209,7 @@ class ReviewScreen(ctk.CTkFrame):
             node = self.nav.node_for_path(f["path_san"])
             if node is not None:
                 nodes_with_findings.append(node)
-        for i, seg in enumerate(move_tree_segments(self.tree, nodes_with_findings)):
+        for i, seg in enumerate(move_list_segments(self.tree, nodes_with_findings)):
             start = box.index("end-1c")
             tags = seg.tags
             if seg.node is not None:
@@ -358,6 +385,16 @@ class ReviewScreen(ctk.CTkFrame):
 
         row = ctk.CTkFrame(card, fg_color="transparent")
         row.pack(fill="x", padx=6, pady=6)
+        if f["id"] not in self.revealed and f["type"] == "chose_worse" \
+                and len(considered_moves(self.nav, f)) >= 2:
+            picks = ctk.CTkFrame(card, fg_color="transparent")
+            picks.pack(fill="x", padx=6, pady=(4, 0))
+            ctk.CTkLabel(picks, text="Your pick:", font=ctk.CTkFont(size=12)).pack(side="left")
+            for san in considered_moves(self.nav, f):
+                ctk.CTkButton(picks, text=san, width=56, height=24,
+                              command=lambda s=san, f=f: self.answer_choice(f, s)).pack(
+                    side="left", padx=2)
+
         if f["id"] not in self.revealed:
             if f["type"] == "missing_eval":
                 ctk.CTkLabel(row, text="Your eval:", font=ctk.CTkFont(size=12)).pack(side="left")
@@ -386,6 +423,9 @@ class ReviewScreen(ctk.CTkFrame):
                 return f"You: {mine} · engine: {f['engine_value']} → {verdict}"
             return f"Engine: {f.get('engine_value')}"
         text = f["answer_text"] or ""
+        verdict = choice_verdict(f)
+        if verdict:
+            text = f"{verdict}\n{text}"
         if f.get("pv_san"):
             text += f"\nLine: {' '.join(f['pv_san'][:6])}"
         return text
@@ -410,6 +450,17 @@ class ReviewScreen(ctk.CTkFrame):
         review_store.set_finding_status(f["id"], "seen" if f["status"] == "open" else f["status"],
                                         user_value=band)
         f["user_value"] = band
+        if f["status"] == "open":
+            f["status"] = "seen"
+        self.revealed.add(f["id"])
+        self.goto_finding(f)
+        self.refresh_findings()
+
+    def answer_choice(self, f: dict, san: str) -> None:
+        """Record which of my candidates I think was best, then reveal the answer."""
+        review_store.set_finding_status(f["id"], "seen" if f["status"] == "open" else f["status"],
+                                        user_answer=san)
+        f["user_answer"] = san
         if f["status"] == "open":
             f["status"] = "seen"
         self.revealed.add(f["id"])

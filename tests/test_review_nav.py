@@ -6,7 +6,9 @@ import chess
 import chess.pgn
 
 from core.analysis_tree import build_tree
-from core.review_nav import Navigator, best_move_arrow, group_findings, move_tree_segments
+from core.review_nav import (
+    Navigator, best_move_arrow, figurine, group_findings, move_list_segments,
+)
 
 PGN = """[White "me"]
 [Black "them"]
@@ -83,18 +85,25 @@ def test_group_findings_order_and_dismissed():
         "Your candidates", "Evaluations", "Blind spots"]
 
 
-def test_move_tree_segments_layout():
-    """Mainline inline; variations bracketed on indented lines; otb vs post-game tags."""
+def test_move_list_layout():
+    """Lichess-style rows; comment and variation blocks; "…" after an interrupted White move."""
     n = nav()
     nf3 = n.node_for_path(["e4", "e5", "Nf3"])
-    segs = move_tree_segments(n.tree, finding_nodes=[nf3])
+    segs = move_list_segments(n.tree, finding_nodes=[nf3])
     text = "".join(s.text for s in segs)
-    assert text.startswith("1. e4 \n    (1. d4 d5 =)\n1... e5 2. Nf3 ● {main idea} ")
-    assert "\n    (2. Bc4 {otb} 2... Nc6 \n        (2... Nf6 3. d3)\n    3. Qh5)" in text
-    assert "\n    (2. f4)\n2... Nc6 += 3. Bb5" in text
+    assert text == ("1\te4\t…\n"
+                    "1.d4 d5 =\n"
+                    "1\t…\te5\n"
+                    "2\t♘f3 ●\t…\n"
+                    "main idea\n"
+                    "├ 2.♗c4 otb 2...♘c6 (2...♘f6 3.d3) 3.♕h5\n"
+                    "└ 2.f4\n"
+                    "2\t…\t♘c6 +=\n"
+                    "3\t♗b5\n")
 
     moves = [s for s in segs if s.node is not None]
     assert len(moves) == len(n.tree.nodes)
+    assert all(s.text == figurine(s.node.san) for s in moves)       # highlight = the move only
     kinds = {s.node.label + "/" + s.node.path_san[2] if len(s.node.path_san) > 2 else
              s.node.label: s.tags[1] for s in moves}
     assert kinds["2.Bc4/Bc4"] == "otb" and kinds["3.d3/Bc4"] == "otb"   # inherited
@@ -102,8 +111,53 @@ def test_move_tree_segments_layout():
     assert kinds["2.Nf3/Nf3"] == "main"
     assert "has_finding" in next(s for s in moves if s.node is nf3).tags
 
+    def tags_of(fragment):
+        """Tags of the first segment with this text."""
+        return next(s.tags for s in segs if s.text == fragment)
+    assert "row" in tags_of("1\t") and "comment_block" in tags_of("main idea\n")
+    assert "var_block" in tags_of("├ ") and "sub" in tags_of("(")
+    assert "sub" in next(s for s in moves if s.node.san == "Nf6").tags
+
+
+def test_rows_stripe_and_glyphs():
+    """Rows alternate stripes; glyphs are separate, coloured segments."""
+    pgn = '[White "me"]\n[Black "them"]\n\n1. e4! e5?? 2. Nf3?! Nc6 3. Bb5 *'
+    tree = build_tree(chess.pgn.read_game(io.StringIO(pgn)), "white")
+    segs = move_list_segments(tree)
+    assert "".join(s.text for s in segs) == "1\te4!\te5??\n2\t♘f3?!\t♘c6\n3\t♗b5\n"
+    stripes = [s.tags[-1] for s in segs if s.text.endswith("\t") and s.tags[0] == "num"]
+    assert stripes == ["row_even", "row_odd", "row_even"]
+    glyphs = {s.text: s.tags[0] for s in segs if s.text in ("!", "??", "?!")}
+    assert glyphs == {"!": "glyph_good", "??": "glyph_blunder", "?!": "glyph_dubious"}
+
+
+def test_game_starting_with_black():
+    """A game from a FEN with Black to move starts its first row with "…"."""
+    pgn = ('[White "a"]\n[Black "me"]\n[SetUp "1"]\n'
+           '[FEN "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"]\n\n1... e5 2. Nf3 *')
+    tree = build_tree(chess.pgn.read_game(io.StringIO(pgn)), "black")
+    assert "".join(s.text for s in move_list_segments(tree)) == "1\t…\te5\n2\t♘f3\n"
+
+
+def test_figurine():
+    """Piece letters and promotions become figurines; pawns and castling stay."""
+    assert figurine("Nf4+") == "♘f4+" and figurine("Kxd2") == "♔xd2"
+    assert figurine("e8=Q+") == "e8=♕+" and figurine("O-O") == "O-O" and figurine("exd5") == "exd5"
+
 
 def test_empty_game():
     """No moves: no segments, start position."""
     n = Navigator(build_tree(chess.pgn.read_game(io.StringIO('[White "a"]\n\n*')), "white"))
-    assert move_tree_segments(n.tree) == [] and not n.forward()
+    assert move_list_segments(n.tree) == [] and not n.forward()
+
+
+def test_considered_moves_and_verdict():
+    """The quiz offers the played move plus its otb siblings; the verdict reads my pick."""
+    from core.review_nav import choice_verdict, considered_moves
+    n = nav()
+    finding = {"type": "chose_worse", "path_san": ["e4", "e5", "Nf3"], "best_move_san": "Bc4"}
+    assert considered_moves(n, finding) == ["Nf3", "Bc4"]          # f4 isn't marked otb
+    assert considered_moves(n, {"path_san": ["e4", "e5", "Qh4"]}) == []
+    assert choice_verdict(finding) is None                          # not answered yet
+    assert choice_verdict({**finding, "user_answer": "Bc4"}).startswith("✓ Right: Bc4")
+    assert choice_verdict({**finding, "user_answer": "Nf3"}) == "✗ You picked Nf3; Bc4 was better."

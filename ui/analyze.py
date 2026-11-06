@@ -8,6 +8,7 @@ import customtkinter as ctk
 from core.config import load_config, append_primary_theme, append_secondary_theme
 from core.db import insert_blunder, update_blunder
 from core.board_render import fen_to_ctk_image
+from core.llm import model_label
 
 
 DIAGNOSIS_TABLE = {
@@ -49,8 +50,21 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._index = 0
         self._cfg = load_config()
         self._board_image_ref = None  # keep reference to prevent GC
+        # Pre-fill state (PRD F14): suggestions by queue index, filled by a worker thread
+        # and applied on the UI thread by _poll_suggestions.
+        self._captions = {}
+        self._suggestions = {}
+        self._applied = set()
+        self._touched = set()
+        self._applying = False
+        self._closing = False
+        self._prefetch_done = False
+        self._poll_id = None
+        self._model = model_label()
         self._build_ui()
+        self._track_edits()
         self._load_move()
+        self._start_prefetch()
 
     # ------------------------------------------------------------------ layout
 
@@ -98,9 +112,13 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         row = 0
 
+        # AI pre-fill status: error (orange) or the AI's one-line reason (grey)
+        self._ai_note = ctk.CTkLabel(self._right, text="", wraplength=560, justify="left",
+                                     anchor="w", font=ctk.CTkFont(size=12))
+        self._ai_note_row = row; row += 1
+
         # Step dropdown
-        ctk.CTkLabel(self._right, text="1. Thinking step", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(16, 2)); row += 1
+        self._field_title("1. Thinking step", row, "step", pady=(16, 2)); row += 1
         self._step_var = ctk.StringVar(value=STEP_OPTIONS[0])
         self._step_menu = ctk.CTkOptionMenu(
             self._right, variable=self._step_var, values=STEP_OPTIONS,
@@ -109,16 +127,15 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._step_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 8)); row += 1
 
         # Layer buttons
-        ctk.CTkLabel(self._right, text="2. Did you see it?", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(4, 2)); row += 1
+        self._field_title("2. Did you see it?", row, "layer", pady=(4, 2)); row += 1
         self._layer_var = ctk.StringVar(value="")
         layer_frame = ctk.CTkFrame(self._right, fg_color="transparent")
         layer_frame.grid(row=row, column=0, sticky="w", padx=8, pady=(0, 8)); row += 1
         self._btn_didnt = ctk.CTkButton(layer_frame, text="Didn't see it", width=140,
-                                         command=lambda: self._set_layer("didnt_see"))
+                                         command=lambda: self._user_set_layer("didnt_see"))
         self._btn_didnt.pack(side="left", padx=(0, 8))
         self._btn_saw = ctk.CTkButton(layer_frame, text="Saw it, got it wrong", width=160,
-                                       command=lambda: self._set_layer("got_it_wrong"))
+                                       command=lambda: self._user_set_layer("got_it_wrong"))
         self._btn_saw.pack(side="left")
 
         # Diagnosis
@@ -129,8 +146,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._diagnosis_label.grid(row=row, column=0, sticky="w", padx=16, pady=(0, 8)); row += 1
 
         # Primary theme
-        ctk.CTkLabel(self._right, text="4. Primary theme", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(4, 2)); row += 1
+        self._field_title("4. Primary theme", row, "primary_theme", pady=(4, 2)); row += 1
         primary_opts = self._cfg["primary_themes"] + ["Other…"]
         self._primary_var = ctk.StringVar(value=primary_opts[0])
         self._primary_menu = ctk.CTkOptionMenu(
@@ -139,10 +155,10 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._primary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._primary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._primary_other_row = row; row += 1      # shown here, under the dropdown
 
         # Secondary theme
-        ctk.CTkLabel(self._right, text="5. Secondary theme", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(4, 2)); row += 1
+        self._field_title("5. Secondary theme", row, "secondary_theme", pady=(4, 2)); row += 1
         secondary_opts = self._cfg["secondary_themes"] + ["Other…"]
         self._secondary_var = ctk.StringVar(value=secondary_opts[0])
         self._secondary_menu = ctk.CTkOptionMenu(
@@ -151,16 +167,15 @@ class AnalyzeScreen(ctk.CTkFrame):
         )
         self._secondary_menu.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4)); row += 1
         self._secondary_other_entry = ctk.CTkEntry(self._right, placeholder_text="Enter new theme…")
+        self._secondary_other_row = row; row += 1
 
         # One-sentence fix
-        ctk.CTkLabel(self._right, text="6. One-sentence fix", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(4, 2)); row += 1
+        self._field_title("6. One-sentence fix", row, "one_sentence_fix", pady=(4, 2)); row += 1
         self._fix_entry = ctk.CTkEntry(self._right, placeholder_text="What would you do differently next time?")
         self._fix_entry.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 8)); row += 1
 
         # Training prescription
-        ctk.CTkLabel(self._right, text="7. Training prescription", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=8, pady=(4, 2)); row += 1
+        self._field_title("7. Training prescription", row, "training_prescription", pady=(4, 2)); row += 1
         presc_opts = self._cfg["training_prescriptions"]
         self._presc_var = ctk.StringVar(value=presc_opts[0])
         self._presc_menu = ctk.CTkOptionMenu(self._right, variable=self._presc_var, values=presc_opts)
@@ -217,7 +232,8 @@ class AnalyzeScreen(ctk.CTkFrame):
 
         # Board
         try:
-            img = fen_to_ctk_image(move_data["fen"], size=280, move=move_data.get("move_obj"))
+            img = fen_to_ctk_image(move_data["fen"], size=280, move=move_data.get("move_obj"),
+                                   orientation=self._user_color or "white")
             self._board_image_ref = img
             self._board_label.configure(image=img, text="")
         except Exception as e:
@@ -231,13 +247,19 @@ class AnalyzeScreen(ctk.CTkFrame):
         else:
             self._annotation_frame.grid_forget()
 
-        # Reset wizard fields
+        # Reset wizard fields (not counted as my edits)
+        self._applying = True
+        self._touched = set()
+        for field in self._captions:
+            self._set_caption(field, None)
         self._step_var.set(STEP_OPTIONS[0])
         self._layer_var.set("")
         self._update_layer_buttons()
         self._diagnosis_label.configure(text="— select step and layer above —", text_color="gray")
         self._primary_var.set(self._cfg["primary_themes"][0])
         self._secondary_var.set(self._cfg["secondary_themes"][0])
+        self._on_primary_change(self._primary_var.get())       # hide + clear "Other…" boxes
+        self._on_secondary_change(self._secondary_var.get())
         self._fix_entry.delete(0, "end")
         self._presc_var.set(self._cfg["training_prescriptions"][0])
         self._notes_box.delete("1.0", "end")
@@ -252,12 +274,15 @@ class AnalyzeScreen(ctk.CTkFrame):
         engine_layer = move_data.get("layer_prefill")
         if engine_layer:
             self._set_layer(engine_layer)
+            self._set_caption("layer", "engine")
         if move_data.get("secondary_prefill"):
             self._secondary_var.set(move_data["secondary_prefill"])
+            self._set_caption("secondary_theme", "engine")
+        self._applying = False
 
-        # LLM pre-fill (async) only for moves with a comment and no engine layer.
-        if ann and not engine_layer:
-            threading.Thread(target=self._prefill_from_llm, args=(ann,), daemon=True).start()
+        # Engine + AI suggestions for the other fields (PRD F14)
+        self._applied.discard(self._index)
+        self._apply_suggestion()
 
     # ------------------------------------------------------------------ layer / step
 
@@ -285,21 +310,195 @@ class AnalyzeScreen(ctk.CTkFrame):
         diag = DIAGNOSIS_TABLE.get((step, layer), "")
         self._diagnosis_label.configure(text=diag, text_color=("gray20", "gray85"))
 
+    def _user_set_layer(self, value: str):
+        """Layer button click: my choice, so later suggestions leave it alone."""
+        self._mark_touched("layer")
+        self._set_layer(value)
+
+    # ------------------------------------------------------------------ pre-fill (F14)
+
+    def _field_title(self, text: str, row: int, field: str, pady):
+        """A bold field title with a small source caption at the right of the same row."""
+        ctk.CTkLabel(self._right, text=text, font=ctk.CTkFont(weight="bold")).grid(
+            row=row, column=0, sticky="w", padx=8, pady=pady)
+        caption = ctk.CTkLabel(self._right, text="", text_color="gray",
+                               font=ctk.CTkFont(size=11))
+        caption.grid(row=row, column=0, sticky="e", padx=12, pady=pady)
+        self._captions[field] = caption
+
+    def _set_caption(self, field: str, source):
+        """Show where a field's value came from: "engine", "ai", "pending" or None (nothing)."""
+        text = {"engine": "· from engine", "ai": f"· AI suggestion ({self._model})",
+                "pending": "suggesting…"}.get(source, "")
+        if field in self._captions:
+            self._captions[field].configure(text=text)
+
+    def _track_edits(self):
+        """Mark a field as mine once I change it, so suggestions don't overwrite it."""
+        for var, field in ((self._step_var, "step"), (self._primary_var, "primary_theme"),
+                           (self._secondary_var, "secondary_theme"),
+                           (self._presc_var, "training_prescription")):
+            var.trace_add("write", lambda *_a, f=field: self._mark_touched(f))
+        self._fix_entry.bind("<Key>", lambda _e: self._mark_touched("one_sentence_fix"),
+                             add="+")
+
+    def _mark_touched(self, field: str):
+        """Record that I edited ``field`` (ignored while the code itself fills fields)."""
+        if self._applying:
+            return
+        self._touched.add(field)
+        self._set_caption(field, None)
+
+    def _start_prefetch(self):
+        """Compute suggestions for the whole queue on a worker thread; poll for them here."""
+        if not self._flagged:
+            return
+        threading.Thread(target=self._prefetch_suggestions, daemon=True).start()
+        self._poll_id = self.after(200, self._poll_suggestions)
+
+    def _prefetch_suggestions(self):
+        """Worker thread: engine facts + LLM suggestion for each queued move, in order.
+
+        Only stores results; the UI thread applies them (Tk isn't thread-safe).
+        """
+        from core.prefill import Suggestion, suggest
+        from core.run_review import open_engine
+        from ui import flow
+
+        svc, ev, engine_err = None, None, None
+        try:
+            svc = open_engine(flow.ENGINE_FACTORY)
+            ev = svc.analyse
+        except Exception as exc:  # no Stockfish: the LLM still gets the comment + summary
+            engine_err = f"engine unavailable ({exc})"
+        try:
+            for i, item in enumerate(list(self._flagged)):
+                if self._closing:
+                    return
+                try:
+                    sug = suggest(item, self._cfg, ev=ev)
+                except Exception as exc:
+                    sug = Suggestion(error=f"pre-fill failed ({exc})")
+                if engine_err:
+                    sug.error = "; ".join(x for x in (engine_err, sug.error) if x)
+                self._suggestions[i] = sug
+        finally:
+            if svc is not None:
+                svc.close()
+            self._prefetch_done = True
+
+    def _poll_suggestions(self):
+        """UI thread: apply the current move's suggestion once it's ready; keep polling."""
+        self._poll_id = None
+        if self._closing:
+            return
+        if self._index in self._suggestions and self._index not in self._applied \
+                and self._index < len(self._flagged):
+            self._apply_suggestion()
+        if self._index >= len(self._flagged):
+            return                                  # wizard finished
+        if not (self._prefetch_done and self._index in self._applied):
+            self._poll_id = self.after(250, self._poll_suggestions)
+
+    def _apply_suggestion(self):
+        """Fill the fields I haven't touched from the current move's suggestion.
+
+        Before the suggestion is ready, the empty fields say "suggesting…".
+        """
+        if self._index >= len(self._flagged):
+            return
+        sug = self._suggestions.get(self._index)
+        if sug is None:
+            for field, caption in self._captions.items():
+                if field not in self._touched and not caption.cget("text"):
+                    self._set_caption(field, "pending")
+            self._show_ai_note(None, None)
+            return
+        self._applied.add(self._index)
+        self._applying = True
+        try:
+            for field, value in sug.values.items():
+                if field not in self._touched and self._set_field(field, value):
+                    self._set_caption(field, sug.sources.get(field))
+            for field, caption in self._captions.items():
+                if caption.cget("text") == "suggesting…":
+                    self._set_caption(field, None)
+        finally:
+            self._applying = False
+        self._update_diagnosis()
+        self._show_ai_note(sug.error, sug.reason)
+
+    def _set_field(self, field: str, value) -> bool:
+        """Put a suggested value into its widget; False if it doesn't fit (e.g. unknown theme)."""
+        if field == "step" and value in STEP_VALUES:
+            self._step_var.set(STEP_OPTIONS[STEP_VALUES.index(value)])
+        elif field == "layer" and value in ("didnt_see", "got_it_wrong"):
+            self._set_layer(value)
+        elif field == "primary_theme" and value in self._primary_menu.cget("values"):
+            self._primary_var.set(value)
+            self._on_primary_change(value)
+        elif field == "secondary_theme" and value in self._secondary_menu.cget("values"):
+            self._secondary_var.set(value)
+            self._on_secondary_change(value)
+        elif field == "training_prescription" and value in self._presc_menu.cget("values"):
+            self._presc_var.set(value)
+        elif field == "one_sentence_fix" and value:
+            self._fix_entry.delete(0, "end")
+            self._fix_entry.insert(0, value)
+        else:
+            return False
+        return True
+
+    def _show_ai_note(self, error, reason):
+        """Orange line for a pre-fill problem, grey line for the AI's reason, else nothing."""
+        if error:
+            self._ai_note.configure(text=error, text_color=("#a04000", "#f0a040"))
+        elif reason:
+            self._ai_note.configure(text=f"AI: {reason}", text_color="gray")
+        else:
+            self._ai_note.grid_remove()
+            return
+        self._ai_note.grid(row=self._ai_note_row, column=0, sticky="ew", padx=8, pady=(12, 0))
+
+    def destroy(self):
+        """Stop the pre-fill worker and polling, then destroy the screen."""
+        self._closing = True
+        if self._poll_id is not None:
+            try:
+                self.after_cancel(self._poll_id)
+            except Exception:
+                pass
+        super().destroy()
+
     # ------------------------------------------------------------------ Other… theme
 
     def _on_primary_change(self, value):
-        if value == "Other…":
-            self._primary_other_entry.grid(row=7, column=0, sticky="ew", padx=8, pady=(0, 4),
-                                            in_=self._right)
-        else:
-            self._primary_other_entry.grid_forget()
+        """Show the "new theme" box under the primary dropdown only while "Other…" is chosen."""
+        self._toggle_other_entry(self._primary_other_entry, self._primary_other_row,
+                                 value == "Other…")
 
     def _on_secondary_change(self, value):
-        if value == "Other…":
-            self._secondary_other_entry.grid(row=9, column=0, sticky="ew", padx=8, pady=(0, 4),
-                                              in_=self._right)
+        """Show the "new theme" box under the secondary dropdown only while "Other…" is chosen."""
+        self._toggle_other_entry(self._secondary_other_entry, self._secondary_other_row,
+                                 value == "Other…")
+
+    def _toggle_other_entry(self, entry, row: int, show: bool):
+        """Grid ``entry`` in its own row below its dropdown, or hide and clear it."""
+        if show:
+            entry.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6), in_=self._right)
+            entry.focus_set()
         else:
-            self._secondary_other_entry.grid_forget()
+            entry.delete(0, "end")
+            entry.grid_remove()
+
+    def _add_theme_option(self, menu, var, custom: str):
+        """Put a newly saved custom theme into its dropdown (before "Other…") and select it."""
+        values = list(menu.cget("values"))
+        if custom not in values:
+            values.insert(len(values) - 1 if values and values[-1] == "Other…" else len(values),
+                          custom)
+            menu.configure(values=values)
+        var.set(custom)
 
     def _resolve_primary_theme(self):
         val = self._primary_var.get()
@@ -308,6 +507,8 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Primary theme: enter a theme name or choose from the list."
             append_primary_theme(custom)
+            self._add_theme_option(self._primary_menu, self._primary_var, custom)
+            self._on_primary_change(custom)
             return custom, None
         return val, None
 
@@ -318,24 +519,10 @@ class AnalyzeScreen(ctk.CTkFrame):
             if not custom:
                 return None, "Secondary theme: enter a theme name or choose from the list."
             append_secondary_theme(custom)
+            self._add_theme_option(self._secondary_menu, self._secondary_var, custom)
+            self._on_secondary_change(custom)
             return custom, None
         return val, None
-
-    # ------------------------------------------------------------------ LLM pre-fill
-
-    def _prefill_from_llm(self, annotation: str):
-        """Ask the LLM to guess step and layer from my comment (background thread)."""
-        from core.llm import prefill_classification
-        result = prefill_classification(annotation)
-        if not result:
-            return
-        step = result.get("step")
-        layer = result.get("layer")
-        if step in STEP_VALUES:
-            self.after(0, lambda: self._step_var.set(STEP_OPTIONS[step - 1]))
-        if layer in ("didnt_see", "got_it_wrong"):
-            self.after(0, lambda: self._set_layer(layer))
-        self.after(0, self._update_diagnosis)
 
     # ------------------------------------------------------------------ lichess
 
@@ -432,7 +619,7 @@ class AnalyzeScreen(ctk.CTkFrame):
                 tags = ", ".join(p["themes"][:4]) if p["themes"] else ""
                 puzzle_text_lines.append(f"• {p['url']}" + (f"  [{tags}]" if tags else ""))
 
-        rec = get_recommendation({
+        rec, rec_err = get_recommendation({
             "step": blunder_data.get("step"),
             "layer": blunder_data.get("layer"),
             "diagnosis": blunder_data.get("diagnosis"),
@@ -450,7 +637,8 @@ class AnalyzeScreen(ctk.CTkFrame):
         result_text = ""
         if puzzle_text_lines:
             result_text += "Lichess puzzles:\n" + "\n".join(puzzle_text_lines) + "\n\n"
-        result_text += "Recommendation:\n" + (rec or "Recommendation unavailable.")
+        result_text += "Recommendation:\n" + (
+            rec or f"Recommendation unavailable: {rec_err}")
 
         def _update_label():
             if self._results_label.winfo_exists():

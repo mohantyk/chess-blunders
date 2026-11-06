@@ -25,6 +25,17 @@ def sample_games(sample_pgn_text):
     return read_games(sample_pgn_text)
 
 
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    """Never call the real LLM server from tests: any client creation fails fast."""
+    from core import llm
+
+    def blocked(settings):
+        """Stand-in for llm._client that refuses to build a client."""
+        raise RuntimeError("real LLM calls are disabled in tests")
+    monkeypatch.setattr(llm, "_client", blocked)
+
+
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     """Point core.db at an empty database file in a temp folder and return its path."""
@@ -65,6 +76,13 @@ def ui_env(tk_app, tmp_db, tmp_path, monkeypatch):
 
     for var in ("OLLAMA_API_KEY", "OLLAMA_MODEL", "OLLAMA_BASE_URL"):
         monkeypatch.delenv(var, raising=False)
+    # Tk objects (fonts, images) caught in reference cycles must be freed on the main
+    # thread: if a worker thread's garbage collection frees them, their __del__ calls
+    # Tcl from that thread and blocks until the main thread runs a main loop, which
+    # tests never do. So no automatic cyclic GC during UI tests; collect at teardown.
+    import gc
+    gc.collect()
+    gc.disable()
     db.init_db()
     cfg = load_config()
     cfg["engine"] = {**cfg["engine"], "cache_path": str(tmp_path / "cache.db"), "depth": 4}
@@ -74,6 +92,8 @@ def ui_env(tk_app, tmp_db, tmp_path, monkeypatch):
     for widget in tk_app.winfo_children():
         widget.destroy()
     tk_app.update()
+    gc.enable()
+    gc.collect()
 
 
 def pump(app, until=None, timeout=10.0):

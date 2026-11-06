@@ -353,15 +353,17 @@ def check_decisions(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
             best_cand = max(cand_wins, key=cand_wins.get)
             chose_best = cand_wins[dp.played.san] >= cand_wins[best_cand] - cfg["chose_window"]
             if not chose_best:
+                best_node = next(n for n in dp.otb_candidates if n.san == best_cand)
+                cand_pv = [best_cand] + ev(best_node.fen_after).pv_san(max_plies=5)
                 findings.append(Finding(
                     type="chose_worse", node=dp.played, fen=dp.fen,
-                    hint_text=(f"At move {dp.move_number} one of the moves you considered was "
-                               "better than the one you played — which?"),
+                    hint_text=(f"At move {dp.move_number}, which of the moves you considered "
+                               "was best?"),
                     answer_text=(f"You considered {best_cand}, which was better than "
                                  f"{dp.played.san} ({cand_wins[best_cand]:.0f}% vs "
                                  f"{cand_wins[dp.played.san]:.0f}% for you)."),
                     user_value=dp.played.san, engine_value=f"{best_cand} better",
-                    best_move_san=best_cand,
+                    best_move_san=best_cand, pv_san=cand_pv,
                     win_loss=cand_wins[best_cand] - cand_wins[dp.played.san],
                 ))
 

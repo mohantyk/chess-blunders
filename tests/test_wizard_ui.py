@@ -31,8 +31,6 @@ def game_id(ui_env, monkeypatch):
     """Stored game with a stubbed engine review; network enrichment disabled."""
     monkeypatch.setattr(AnalyzeScreen, "_async_enrich", lambda self, *a: None)
     llm_calls = []
-    monkeypatch.setattr(AnalyzeScreen, "_prefill_from_llm",
-                        lambda self, ann: llm_calls.append(ann))
     gid = db.insert_game(PGN, white="me", black="them", source_key="k", user_color="white",
                          analysis_hash=analysis_hash(PGN))
     stub = StubEngine(0)
@@ -68,7 +66,7 @@ def test_prefill_per_move(game_id, ui_env):
 
     wiz._on_skip()
     pump(ui_env)
-    assert llm_calls == ["too slow"]
+    assert wiz._notes_box.get("1.0", "end").startswith("too slow")
 
 
 def test_save_links_findings(game_id, ui_env):
@@ -107,3 +105,158 @@ def test_games_list_wizard_button(game_id, ui_env):
         wiz._on_skip()
         pump(ui_env)
     assert isinstance(current_screen(ui_env), GamesScreen)
+
+
+def test_wizard_board_uses_my_colour(game_id, ui_env, monkeypatch):
+    """The wizard board is drawn from the side I played."""
+    import ui.analyze as analyze
+    gid, _ = game_id
+    seen = []
+    monkeypatch.setattr(analyze, "fen_to_ctk_image",
+                        lambda fen, size, move=None, orientation="white": seen.append(orientation))
+    flow.open_wizard(ui_env, gid, "black", build_queue(gid), on_done=None)
+    pump(ui_env)
+    assert seen and set(seen) == {"black"}
+
+
+@pytest.fixture
+def tmp_config(tmp_path, monkeypatch):
+    """A commented copy of config.yaml in a temp folder, so theme appends don't touch the real one."""
+    from core import config
+    path = tmp_path / "config.yaml"
+    path.write_text("# my settings\nprimary_themes:  # main ideas\n- Fork\n- Pin\n"
+                    "secondary_themes:\n- None\n- Time pressure\n"
+                    "engine:\n  depth: 15   # plies\n", encoding="utf-8")
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    return path
+
+
+def _grid_row(widget):
+    """The grid row a widget is placed in, or None when it isn't shown."""
+    return int(widget.grid_info()["row"]) if widget.winfo_manager() == "grid" else None
+
+
+def test_other_theme_box_below_dropdown_and_reset(game_id, ui_env, tmp_config):
+    """'Other…' shows a box under the still-visible dropdown; the next move hides and clears it."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    pump(ui_env)
+    assert _grid_row(wiz._primary_menu) is not None
+    assert _grid_row(wiz._primary_other_entry) == _grid_row(wiz._primary_menu) + 1
+    wiz._primary_other_entry.insert(0, "half typed")
+    wiz._on_primary_change("Pin")                  # back to a listed theme
+    assert _grid_row(wiz._primary_other_entry) is None
+    assert wiz._primary_other_entry.get() == ""
+
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._secondary_var.set("Other…")
+    wiz._on_secondary_change("Other…")
+    assert _grid_row(wiz._secondary_other_entry) == _grid_row(wiz._secondary_menu) + 1
+    wiz._on_skip()
+    pump(ui_env)
+    assert _grid_row(wiz._primary_other_entry) is None
+    assert _grid_row(wiz._secondary_other_entry) is None
+    assert wiz._primary_var.get() != "Other…"
+
+
+def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
+    """A custom theme is saved with the entry, appended to config (comments kept), and listed."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._primary_other_entry.insert(0, "3-ply")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "3-ply"
+    conn.close()
+    assert "3-ply" in wiz._primary_menu.cget("values")
+    assert wiz._primary_menu.cget("values")[-1] == "Other…"
+    text = tmp_config.read_text(encoding="utf-8")
+    assert "# my settings" in text and "# main ideas" in text and "# plies" in text
+    assert "- 3-ply" in text
+
+
+def test_listed_theme_is_saved(game_id, ui_env, tmp_config):
+    """Choosing a listed theme after using 'Other…' saves the listed theme."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._primary_var.set("Other…")
+    wiz._on_primary_change("Other…")
+    wiz._primary_var.set("Pin")
+    wiz._on_primary_change("Pin")
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "Pin"
+    conn.close()
+
+
+def test_suggestion_fills_untouched_fields_with_captions(game_id, ui_env, monkeypatch):
+    """A ready suggestion fills every field I haven't edited and labels its source."""
+    from core.prefill import Suggestion
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    assert wiz._captions["step"].cget("text") == "suggesting…"
+    assert wiz._captions["layer"].cget("text") == "· from engine"     # F7 fact, shown at once
+    wiz._presc_var.set("Endgame study")                                 # my own edit
+    wiz._suggestions[0] = Suggestion(
+        values={"step": 2, "layer": "didnt_see", "primary_theme": "Pin",
+                "secondary_theme": "Time pressure", "training_prescription": "Fork puzzles",
+                "one_sentence_fix": "Check forcing moves first."},
+        sources={"step": "engine", "layer": "engine", "primary_theme": "ai",
+                 "secondary_theme": "ai", "training_prescription": "engine",
+                 "one_sentence_fix": "ai"},
+        reason="Missed a pin.")
+    wiz._apply_suggestion()
+    assert wiz._step_var.get() == "Step 2 – missed own tactic"
+    assert wiz._primary_var.get() == "Pin" and wiz._secondary_var.get() == "Time pressure"
+    assert wiz._fix_entry.get() == "Check forcing moves first."
+    assert wiz._presc_var.get() == "Endgame study"                      # untouched by the AI
+    assert wiz._captions["training_prescription"].cget("text") == ""
+    assert wiz._captions["step"].cget("text") == "· from engine"
+    assert wiz._captions["primary_theme"].cget("text").startswith("· AI suggestion")
+    assert "Pattern recognition gap" in wiz._diagnosis_label.cget("text")
+    assert wiz._ai_note.cget("text") == "AI: Missed a pin."
+    wiz._on_save()
+    pump(ui_env)
+    conn = db.get_connection()
+    row = dict(conn.execute("SELECT step, primary_theme, one_sentence_fix, "
+                            "training_prescription FROM blunders").fetchone())
+    conn.close()
+    assert row == {"step": 2, "primary_theme": "Pin",
+                   "one_sentence_fix": "Check forcing moves first.",
+                   "training_prescription": "Endgame study"}
+
+
+def test_editing_a_field_clears_its_caption(game_id, ui_env, monkeypatch):
+    """Changing a pre-filled field makes it mine: caption cleared, later suggestions skip it."""
+    from core.prefill import Suggestion
+    monkeypatch.setattr(AnalyzeScreen, "_start_prefetch", lambda self: None)
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    wiz._suggestions[0] = Suggestion(values={"step": 3}, sources={"step": "ai"})
+    wiz._apply_suggestion()
+    wiz._step_var.set("Step 1 – missed opponent threat")
+    assert wiz._captions["step"].cget("text") == ""
+    wiz._suggestions[0] = Suggestion(values={"step": 4}, sources={"step": "ai"})
+    wiz._apply_suggestion()
+    assert wiz._step_var.get() == "Step 1 – missed opponent threat"
+
+
+def test_prefetch_with_engine_and_no_llm_shows_error(game_id, ui_env):
+    """The real worker: engine rules still fill the step; the LLM error is shown in orange."""
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    pump(ui_env, until=lambda: 0 in wiz._applied, timeout=20)
+    assert "AI suggestions unavailable" in wiz._ai_note.cget("text")
+    assert "disabled in tests" in wiz._ai_note.cget("text")
+    assert wiz._captions["step"].cget("text") == "· from engine"
+    wiz._on_skip()
+    pump(ui_env, until=lambda: 1 in wiz._applied, timeout=20)
+    assert wiz._captions["secondary_theme"].cget("text") == "· from engine"   # Rushed fact

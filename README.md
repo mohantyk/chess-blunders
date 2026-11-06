@@ -51,12 +51,12 @@ uv sync
 Copy the example below into a file named `.env` in the project root and fill in your values:
 
 ```env
-OLLAMA_API_KEY=your_key_here
-OLLAMA_MODEL=llama3
-OLLAMA_BASE_URL=https://your-ollama-endpoint.com/v1
+OLLAMA_API_KEY=your_key_here          # any value works for a local Ollama
+# OLLAMA_BASE_URL=http://mac-mini:11434/v1   # optional: overrides llm.base_url in config.yaml
+# OLLAMA_MODEL=gemma4:12b                    # optional: overrides llm.model
 ```
 
-The app uses these to connect to an Ollama-compatible LLM endpoint for pre-filling classifications and generating training recommendations. If these are missing, the app still works — LLM features are silently skipped.
+The LLM endpoint and model are set in the `llm:` section of `config.yaml` (default: the Ollama server on the Mac mini, `http://mac-mini:11434/v1`, model `gemma4:12b`); the env vars above override them. The LLM fills in the wizard and writes the training recommendation. If it can't be reached, the app still works and the wizard says why (e.g. "AI suggestions unavailable: can't reach http://mac-mini:11434/v1").
 
 **Lichess token (only for a private study).** "Check for new games" downloads your study from Lichess. If the study is private, add a read-only token:
 
@@ -137,8 +137,8 @@ The app parses the PGN, extracts your flagged moves, and launches the review wiz
 After import, each chapter is checked by Stockfish (a progress bar shows how far it's got; **Skip engine →** stops it), then the **Review** screen opens:
 
 - **Board (left):** the position, your Lichess arrows and circles, and the last move. Once you reveal an answer, the engine's move is drawn in purple.
-- **Move list (centre):** the game with all your variations. Lines tagged `otb` are green, post-game ideas blue, and moves with a finding are marked ●. Click a move to jump to it.
-- **Findings (right):** grouped by check. Each finding shows a **hint** first (where to look). Click **Show answer** for the engine's move, line and eval. For a line end where you didn't give an eval, you pick your own first (`+-` … `-+`), then see the engine's. **Dismiss** hides a finding you disagree with and leaves it out of the metrics.
+- **Move list (centre):** laid out like Lichess. The main line is a table (move number, White, Black). A move's comment appears as its own paragraph under it, and its variations as shaded lines below (├ / └ when there are several), with deeper side-lines in lighter brackets. Pieces are shown as figurines (♘f4+), glyphs in colour. Lines tagged `otb` are green, post-game ideas blue, and moves with a finding are marked ●. Click a move to jump to it.
+- **Findings (right):** grouped by check. Each finding shows a **hint** first (where to look). Click **Show answer** for the engine's move, line and eval. For a line end where you didn't give an eval, you pick your own first (`+-` … `-+`), then see the engine's. When you played the worse of your candidates, the card asks which was best and shows a button per move you considered; your pick is saved and the answer says if you were right. **Dismiss** hides a finding you disagree with and leaves it out of the metrics.
 - **Header:** the game's analysis-skill metrics, shown as small counts like "2/3", not just percentages.
 - **Keys:** ← → step through the current line, ↑ ↓ switch between variations, Home / End jump to the start / end. **Open in Lichess ↗** opens the current position.
 
@@ -154,12 +154,13 @@ Re-open any game later from **📋 Games** on the home screen. The engine only r
 
 Holes in your analysis lines aren't game mistakes, so they stay on the Review screen and in the metrics. Moves you've already saved in the wizard don't come up again, and neither do findings you dismissed.
 
-**What's filled in for you** (you can change it all):
-- **Did you see it?** "Didn't see it" if the engine's best wasn't among your `otb` candidates; "Saw it, got it wrong" if you considered it and played something worse. Otherwise the LLM's guess from your comment is used, as before.
-- **Secondary theme:** "Rushed (time available)" when you played the move quickly with plenty of time left.
+**What's filled in for you** (you can change it all). When the wizard opens, it works out every queued move in the background, so the next one is usually ready:
+- **Facts from the engine:** "Didn't see it" if the engine's best wasn't among your `otb` candidates, "Saw it, got it wrong" if you considered it and played something worse; "Rushed (time available)" as secondary theme when you played quickly with plenty of time left. These are never changed by the AI.
+- **Engine guesses:** the engine looks at the position: was the best move your own check or tactic (fork, pin, skewer, discovered attack, mate, a free piece)? Did your move allow such a tactic, and was that threat already there before your move? From that it guesses the **thinking step**, the **primary theme** and the **training prescription**.
+- **AI suggestions:** the LLM gets those facts, your comment and the moves you considered, and fills in every field, including a **one-sentence fix**. It keeps the engine's guesses unless your comment points elsewhere.
 - **Notes:** your comment plus an engine line, e.g. "Engine: best was Qe6 (+2.10); you played Rff1 (-3.40)."
 
-Thinking step, primary theme, fix and prescription stay yours to choose; the engine can't tell those apart reliably. Saving also records the time you spent and the clock left, and links the entry to the engine finding.
+A small grey label next to each field says where its value came from: "· from engine", "· AI suggestion (model)", or "suggesting…" while it's still working. Once you change a field, it's yours: later suggestions won't touch it. If the engine or the LLM can't be reached, an orange line at the top of the form says why, and the rest is still filled in. Saving also records the time you spent and the clock left, and links the entry to the engine finding.
 
 For each flagged move you will see:
 
@@ -215,7 +216,7 @@ Click **⚙ Settings** on the home screen to edit:
 - the map from your themes to Lichess puzzle themes;
 - the missed-win thresholds.
 
-Changes are saved to `config.yaml` immediately. The engine and review settings (`engine:` and `review:`) and your Lichess username/study aren't in the Settings screen yet: edit them in `config.yaml`. The LLM endpoint and model are set in `.env`.
+Changes are saved to `config.yaml` immediately. The engine and review settings (`engine:` and `review:`) and your Lichess username/study aren't in the Settings screen yet: edit them in `config.yaml`. The LLM endpoint and model are in the `llm:` section of `config.yaml` (or `.env`, which overrides it).
 
 ---
 
@@ -224,7 +225,7 @@ Changes are saved to `config.yaml` immediately. The engine and review settings (
 1. Analyse the game by hand in your Lichess study: variations (`otb` for in-game candidates), eval symbols, "?" / "??", comments.
 2. Click **⟳ Check for new games** (or paste a PGN and click **Analyse →**). Tick the chapters to import.
 3. Stockfish checks your analysis, then the **Review** screen opens. Work through the findings: hint first, then **Show answer**.
-4. **Continue to wizard →**: classify each queued move (thinking step, seen or not, themes, fix, prescription). Some fields are pre-filled from the engine.
+4. **Continue to wizard →**: classify each queued move (thinking step, seen or not, themes, fix, prescription). Every field is pre-filled from the engine and the LLM; change whatever you disagree with.
 5. After saving, the app fetches targeted Lichess puzzles and an LLM recommendation.
 6. Re-open any game from **📋 Games**. Watch your trends on **📊 Patterns**.
 
@@ -254,13 +255,16 @@ chess-patterns/
 │   ├── review_store.py   # engine runs, decision points and findings in blunders.db
 │   ├── review_nav.py     # Review-screen logic: navigation, move list, finding placement
 │   ├── run_review.py     # run the engine checks on a stored game (used by the UI)
-│   ├── wizard_queue.py   # wizard queue + pre-fill from glyphs and engine findings
+│   ├── wizard_queue.py   # wizard queue from glyphs and engine findings
+│   ├── position_facts.py # engine facts about a move (tactics, threats) + rule guesses
+│   ├── prefill.py        # wizard pre-fill: engine facts + rule guesses + one LLM call
+│   ├── prompts/          # LLM system prompts (wizard_prefill.md, recommendation.md)
 │   ├── skill_metrics.py  # analysis-skill metrics across games (Patterns screen)
 │   ├── pgn_parser.py     # PGN parsing and blunder flagging
 │   ├── db.py             # SQLite read/write
 │   ├── config.py         # config.yaml loading and saving
 │   ├── board_render.py   # FEN → board image pipeline
-│   ├── llm.py            # LLM pre-fill and recommendations
+│   ├── llm.py            # LLM client (Mac mini Ollama by default): JSON answers, recommendations
 │   └── puzzles.py        # Lichess puzzle API
 ├── scripts/
 │   └── bench_engine.py   # benchmark engine settings on your own positions

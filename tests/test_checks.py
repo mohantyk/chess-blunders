@@ -142,6 +142,7 @@ def test_chose_worse():
     (worse,) = by_type(findings, "chose_worse")
     assert worse.best_move_san == "Bc4" and "Bc4" not in worse.hint_text
     assert worse.answer_text.startswith("You considered Bc4, which was better than Nf3")
+    assert worse.pv_san[0] == "Bc4" and len(worse.pv_san) == 2   # Bc4 + engine reply
 
 
 def test_chose_window_tolerates_small_differences():
