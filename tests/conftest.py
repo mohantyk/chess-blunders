@@ -25,6 +25,17 @@ def sample_games(sample_pgn_text):
     return read_games(sample_pgn_text)
 
 
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    """Never call the real LLM server from tests: any client creation fails fast."""
+    from core import llm
+
+    def blocked(settings):
+        """Stand-in for llm._client that refuses to build a client."""
+        raise RuntimeError("real LLM calls are disabled in tests")
+    monkeypatch.setattr(llm, "_client", blocked)
+
+
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     """Point core.db at an empty database file in a temp folder and return its path."""

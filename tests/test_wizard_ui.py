@@ -31,8 +31,6 @@ def game_id(ui_env, monkeypatch):
     """Stored game with a stubbed engine review; network enrichment disabled."""
     monkeypatch.setattr(AnalyzeScreen, "_async_enrich", lambda self, *a: None)
     llm_calls = []
-    monkeypatch.setattr(AnalyzeScreen, "_prefill_from_llm",
-                        lambda self, ann: llm_calls.append(ann))
     gid = db.insert_game(PGN, white="me", black="them", source_key="k", user_color="white",
                          analysis_hash=analysis_hash(PGN))
     stub = StubEngine(0)
@@ -68,7 +66,7 @@ def test_prefill_per_move(game_id, ui_env):
 
     wiz._on_skip()
     pump(ui_env)
-    assert llm_calls == ["too slow"]
+    assert wiz._notes_box.get("1.0", "end").startswith("too slow")
 
 
 def test_save_links_findings(game_id, ui_env):

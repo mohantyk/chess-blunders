@@ -47,6 +47,11 @@ DEFAULTS = {
         "cache_path": "engine_cache.db",
     },
     # Analysis-review thresholds (PRD F5-F10). Win% values are points on 0-100.
+    "llm": {
+        "base_url": "http://mac-mini:11434/v1",   # OpenAI-compatible endpoint (Ollama)
+        "model": "gemma4:12b",
+        "timeout_s": 90,
+    },
     "review": {
         "candidate_window": 5,          # engine top set: moves within this of the best
         "chose_window": 5,              # played move counts as best within this

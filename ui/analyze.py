@@ -260,10 +260,6 @@ class AnalyzeScreen(ctk.CTkFrame):
         if move_data.get("secondary_prefill"):
             self._secondary_var.set(move_data["secondary_prefill"])
 
-        # LLM pre-fill (async) only for moves with a comment and no engine layer.
-        if ann and not engine_layer:
-            threading.Thread(target=self._prefill_from_llm, args=(ann,), daemon=True).start()
-
     # ------------------------------------------------------------------ layer / step
 
     def _set_layer(self, value: str):
@@ -343,22 +339,6 @@ class AnalyzeScreen(ctk.CTkFrame):
             self._on_secondary_change(custom)
             return custom, None
         return val, None
-
-    # ------------------------------------------------------------------ LLM pre-fill
-
-    def _prefill_from_llm(self, annotation: str):
-        """Ask the LLM to guess step and layer from my comment (background thread)."""
-        from core.llm import prefill_classification
-        result = prefill_classification(annotation)
-        if not result:
-            return
-        step = result.get("step")
-        layer = result.get("layer")
-        if step in STEP_VALUES:
-            self.after(0, lambda: self._step_var.set(STEP_OPTIONS[step - 1]))
-        if layer in ("didnt_see", "got_it_wrong"):
-            self.after(0, lambda: self._set_layer(layer))
-        self.after(0, self._update_diagnosis)
 
     # ------------------------------------------------------------------ lichess
 
@@ -455,7 +435,7 @@ class AnalyzeScreen(ctk.CTkFrame):
                 tags = ", ".join(p["themes"][:4]) if p["themes"] else ""
                 puzzle_text_lines.append(f"• {p['url']}" + (f"  [{tags}]" if tags else ""))
 
-        rec = get_recommendation({
+        rec, rec_err = get_recommendation({
             "step": blunder_data.get("step"),
             "layer": blunder_data.get("layer"),
             "diagnosis": blunder_data.get("diagnosis"),
@@ -473,7 +453,8 @@ class AnalyzeScreen(ctk.CTkFrame):
         result_text = ""
         if puzzle_text_lines:
             result_text += "Lichess puzzles:\n" + "\n".join(puzzle_text_lines) + "\n\n"
-        result_text += "Recommendation:\n" + (rec or "Recommendation unavailable.")
+        result_text += "Recommendation:\n" + (
+            rec or f"Recommendation unavailable: {rec_err}")
 
         def _update_label():
             if self._results_label.winfo_exists():
