@@ -233,6 +233,31 @@ def init_db():
         print(f"[db] game {upd['id']}: source_key = {upd['source_key']}")
     conn.commit()
     conn.close()
+    _rename_old_themes()
+
+
+def _rename_old_themes() -> None:
+    """Rewrite saved entries that use a merged theme name (``config.THEME_RENAMES``).
+
+    E.g. "3-ply" becomes "3-ply calculation". Backs up the database first, and
+    only when there is something to change.
+    """
+    from core.config import THEME_RENAMES
+
+    conn = get_connection()
+    marks = ",".join("?" * len(THEME_RENAMES))
+    count = conn.execute(f"SELECT COUNT(*) FROM blunders WHERE primary_theme IN ({marks})",
+                         list(THEME_RENAMES)).fetchone()[0]
+    conn.close()
+    if not count:
+        return
+    backup_db("theme rename: " + ", ".join(f"{o} -> {n}" for o, n in THEME_RENAMES.items()))
+    conn = get_connection()
+    for old, new in THEME_RENAMES.items():
+        conn.execute("UPDATE blunders SET primary_theme = ? WHERE primary_theme = ?", (new, old))
+    conn.commit()
+    conn.close()
+    print(f"[db] renamed old primary themes on {count} entr{'y' if count == 1 else 'ies'}")
 
 
 def _plan_source_key_backfill(conn) -> list:

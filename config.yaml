@@ -16,7 +16,6 @@ primary_themes:
 - Hanging Pawn
 - Evaluation
 - Hanging Piece
-- 3-ply
 - 3-ply calculation
 secondary_themes:
 - None
@@ -51,7 +50,6 @@ lichess_theme_map:
   King safety: kingsideAttack
   Endgame technique: endgame
   Calculation error: mateIn2
-  3-ply: mateIn2
   3-ply calculation: mateIn2
   Calculation: mateIn2
   Hanging Piece: hangingPiece

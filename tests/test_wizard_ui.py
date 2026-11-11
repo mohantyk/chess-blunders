@@ -223,17 +223,17 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
     wiz._step_var.set(STEP_OPTIONS[0])
-    wiz._primary_other_entry.insert(0, "3-ply")
+    wiz._primary_other_entry.insert(0, "Overloading")
     wiz._on_save()
     pump(ui_env)
     conn = db.get_connection()
-    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "3-ply"
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "Overloading"
     conn.close()
-    assert "3-ply" in wiz._primary_menu.cget("values")
+    assert "Overloading" in wiz._primary_menu.cget("values")
     assert wiz._primary_menu.cget("values")[-1] == "Other…"
     text = tmp_config.read_text(encoding="utf-8")
     assert "# my settings" in text and "# main ideas" in text and "# plies" in text
-    assert "- 3-ply" in text
+    assert "- Overloading" in text
 
 
 def test_other_theme_with_lichess_puzzle_theme(game_id, ui_env, tmp_config):

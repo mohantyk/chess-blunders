@@ -170,3 +170,18 @@ def test_findings_get_user_answer_column(tmp_db, sample_games):
     db.init_db()
     assert len(glob.glob(tmp_db + ".bak-*")) == 2
     assert "user_answer" in {r["name"] for r in _rows("PRAGMA table_info(findings)")}
+
+
+def test_old_3ply_entries_renamed_with_backup(tmp_db):
+    """Saved "3-ply" entries become "3-ply calculation" on start-up, after a backup; others stay."""
+    db.init_db()
+    gid = db.insert_game("1. e4 *", source_key="k")
+    for theme in ("3-ply", "Fork"):
+        db.insert_blunder(gid, {"move_number": 1, "move_side": "white", "move_san": "e4",
+                                "fen": "f", "flag_type": "manual", "primary_theme": theme})
+    db.init_db()
+    assert [r["primary_theme"] for r in _rows("SELECT primary_theme FROM blunders ORDER BY id")] \
+        == ["3-ply calculation", "Fork"]
+    assert len(glob.glob(tmp_db + ".bak-*")) == 1
+    db.init_db()                                   # nothing left to rename: no new backup
+    assert len(glob.glob(tmp_db + ".bak-*")) == 1

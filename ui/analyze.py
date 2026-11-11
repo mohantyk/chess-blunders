@@ -6,7 +6,7 @@ import webbrowser
 import customtkinter as ctk
 
 from core.config import (load_config, append_primary_theme, append_secondary_theme,
-                         set_lichess_theme, COMMON_LICHESS_THEMES)
+                         set_lichess_theme, canonical_theme, COMMON_LICHESS_THEMES)
 from core.db import insert_blunder, update_blunder
 from core.board_render import fen_to_ctk_image
 from core.llm import model_label
@@ -508,6 +508,7 @@ class AnalyzeScreen(ctk.CTkFrame):
             custom = self._primary_other_entry.get().strip()
             if not custom:
                 return None, "Primary theme: enter a theme name or choose from the list."
+            custom = canonical_theme(custom)
             append_primary_theme(custom)
             set_lichess_theme(custom, self._lichess_theme_var.get())
             self._add_theme_option(self._primary_menu, self._primary_var, custom)
