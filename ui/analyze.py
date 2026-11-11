@@ -7,9 +7,10 @@ import customtkinter as ctk
 
 from core.config import (load_config, append_primary_theme, append_secondary_theme,
                          set_lichess_theme, canonical_theme, COMMON_LICHESS_THEMES)
-from core.db import insert_blunder, update_blunder
+from core.db import get_training_entries, insert_blunder, update_blunder
 from core.board_render import fen_to_ctk_image
 from core.llm import model_label
+from ui.training import render_training_cards
 
 
 DIAGNOSIS_TABLE = {
@@ -35,11 +36,13 @@ PLACEHOLDER = "— choose —"     # step / primary theme until a suggestion or 
 
 class AnalyzeScreen(ctk.CTkFrame):
     def __init__(self, master, game_id, flagged, user_color, on_done=None, context_label=None,
-                 **kwargs):
+                 done_label="Continue →", **kwargs):
         """Wizard over ``flagged`` moves of one game.
 
-        on_done: optional callback run instead of the "All moves reviewed" screen
-            (used to continue with the next chapter of a multi-chapter import).
+        on_done: optional callback for the final page's button (e.g. the next chapter of a
+            multi-chapter import); without it the button goes back to Home. If nothing was
+            saved, on_done runs straight away instead of the final page.
+        done_label: text of the final page's button when ``on_done`` is given.
         context_label: optional text shown before the progress line, e.g.
             "Chapter 1 of 2 · me – them".
         """
@@ -48,6 +51,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._flagged = flagged
         self._user_color = user_color
         self._on_done = on_done
+        self._done_label = done_label
         self._context_label = context_label
         self._index = 0
         self._cfg = load_config()
@@ -66,6 +70,11 @@ class AnalyzeScreen(ctk.CTkFrame):
         self._enrich_results = {}      # blunder id -> result text, filled by worker threads
         self._enrich_pending = None    # (blunder id, move label) of the last saved move
         self._enrich_poll_id = None
+        self._saved_ids = []           # blunder ids saved in this wizard run, in order
+        self._enrich_finished = set()  # blunder ids whose worker has finished (set by workers)
+        self._done_poll_id = None
+        self._done_shown_finished = None
+        self.training_links = []
         self._model = model_label()
         self._build_ui()
         self._track_edits()
@@ -462,7 +471,7 @@ class AnalyzeScreen(ctk.CTkFrame):
     def destroy(self):
         """Stop polling and destroy the screen (the game's pre-fill job keeps running)."""
         self._closing = True
-        for after_id in (self._poll_id, self._enrich_poll_id):
+        for after_id in (self._poll_id, self._enrich_poll_id, self._done_poll_id):
             if after_id is not None:
                 try:
                     self.after_cancel(after_id)
@@ -591,6 +600,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         }
 
         blunder_id = insert_blunder(self._game_id, blunder_data)
+        self._saved_ids.append(blunder_id)
         if move_data.get("finding_ids"):
             from core.wizard_queue import mark_logged
             mark_logged(move_data["finding_ids"], blunder_id)
@@ -626,6 +636,7 @@ class AnalyzeScreen(ctk.CTkFrame):
         except Exception as exc:
             text = f"Puzzles/recommendation failed: {exc}"
         self._enrich_results[blunder_id] = text
+        self._enrich_finished.add(blunder_id)
 
     def _enrich(self, blunder_id, primary_theme, blunder_data) -> str:
         """Fetch puzzles and the LLM recommendation, store them on the blunder row, return the text."""
@@ -694,15 +705,71 @@ class AnalyzeScreen(ctk.CTkFrame):
     # ------------------------------------------------------------------ done
 
     def _show_done(self):
-        """Finish this game: hand over to the next chapter, or show the done screen."""
-        if self._on_done is not None:
+        """Finish this game with a final page: the saved moves' recommendations and puzzles.
+
+        If nothing was saved (every move skipped) there is nothing to train, so it hands
+        straight over to ``on_done`` (next chapter / games list) or shows "All moves
+        reviewed!". Moves whose puzzles are still being fetched say so, and the page
+        refreshes itself once they arrive.
+        """
+        if self._enrich_poll_id is not None:       # the last-saved box is about to go
+            self.after_cancel(self._enrich_poll_id)
+            self._enrich_poll_id = None
+        self._enrich_pending = None
+        if not self._saved_ids and self._on_done is not None:
             self._on_done()
             return
         for widget in self.winfo_children():
             widget.destroy()
-        ctk.CTkLabel(self, text="All moves reviewed!", font=ctk.CTkFont(size=22, weight="bold")).pack(pady=(80, 16))
-        ctk.CTkLabel(self, text="Your blunders have been saved to the database.", text_color="gray").pack(pady=(0, 32))
-        ctk.CTkButton(self, text="← Analyse another game", width=200, command=self._go_home).pack()
+        ctk.CTkLabel(self, text="All moves reviewed!",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(pady=(24 if self._saved_ids else 80, 8))
+        if self._on_done is not None:
+            button = ctk.CTkButton(self, text=self._done_label, width=200, command=self._finish)
+        else:
+            button = ctk.CTkButton(self, text="← Analyse another game", width=200,
+                                   command=self._go_home)
+        if not self._saved_ids:
+            ctk.CTkLabel(self, text="Nothing was saved for this game.",
+                         text_color="gray").pack(pady=(0, 32))
+            button.pack()
+            return
+        n = len(self._saved_ids)
+        ctk.CTkLabel(self, text=f"{n} move{'s' if n != 1 else ''} saved to the database. "
+                                "Train on them with these recommendations and puzzles.",
+                     text_color="gray").pack(pady=(0, 8))
+        button.pack(side="bottom", pady=(8, 16))
+        self._training_frame = ctk.CTkScrollableFrame(
+            self, label_text="Training — recommendations and puzzles")
+        self._training_frame.pack(fill="both", expand=True, padx=16, pady=(0, 4))
+        self._refresh_training()
+
+    def _refresh_training(self):
+        """UI thread: (re)draw the final page's training cards; poll while puzzles are pending.
+
+        Cards are only redrawn when another move's puzzles/recommendation have arrived.
+        """
+        self._done_poll_id = None
+        if self._closing or not self.winfo_exists():
+            return
+        finished = frozenset(self._enrich_finished)
+        if finished != self._done_shown_finished:
+            self._done_shown_finished = finished
+            for widget in self._training_frame.winfo_children():
+                widget.destroy()
+            entries = get_training_entries(limit=len(self._saved_ids), ids=self._saved_ids)
+            pending = [i for i in self._saved_ids if i not in finished]
+            self.training_links = render_training_cards(
+                self._training_frame, entries, lambda url: webbrowser.open(url),
+                pending_ids=pending)
+        if any(i not in finished for i in self._saved_ids):
+            self._done_poll_id = self.after(500, self._refresh_training)
+
+    def _finish(self):
+        """Final page button: hand over to ``on_done`` (next chapter / games list)."""
+        if self._done_poll_id is not None:
+            self.after_cancel(self._done_poll_id)
+            self._done_poll_id = None
+        self._on_done()
 
     def _go_home(self):
         """Return to the Home / import screen."""

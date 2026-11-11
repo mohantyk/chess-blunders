@@ -70,3 +70,11 @@ def test_patterns_training_section(gid, ui_env, monkeypatch):
     assert "No recommendation yet" in texts and "Slow down." in texts
     screen._open_url(screen.training_links[0][0])     # what a click on the link calls
     assert opened == ["https://lichess.org/training/a"]
+
+
+def test_training_entries_filtered_by_ids(gid):
+    """``ids`` limits the entries to the given wizard entries (e.g. one wizard run)."""
+    a = _entry(gid, 5, "white", "Nf3", "Fork", logged="2026-01-01")
+    _entry(gid, 7, "black", "Qd8", "Pin", logged="2026-01-03")
+    c = _entry(gid, 9, "white", "Bb5", "Skewer", logged="2026-01-02")
+    assert [e["id"] for e in db.get_training_entries(limit=10, ids=[a, c])] == [c, a]
