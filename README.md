@@ -185,7 +185,7 @@ Click **Save → next** to log the blunder and move to the next one, or **Skip**
 
 Thinking step and Primary theme start on "— choose —" unless the engine or AI filled them; Save asks you to choose. If you add a theme with "Other…", you can also pick a Lichess puzzle theme for it (default "none").
 
-After saving, the app automatically fetches relevant Lichess puzzles and (if configured) an LLM recommendation for targeted training. The result stays visible under the board, labelled with the move, while you continue, and is kept on the **Patterns** screen. Themes map to puzzles via `lichess_theme_map` in `config.yaml` (calculation themes such as "3-ply" lead to mate-in-2 puzzles; if the primary theme has no mapping, the secondary theme's is used).
+After saving, the app automatically fetches relevant Lichess puzzles and (if configured) an LLM recommendation for targeted training. The result stays visible under the board, labelled with the move, while you continue. After the last move, the wizard ends on a **training page** listing every move you saved in that game with its fix, recommendation and clickable puzzle links (moves still being fetched say so and fill in when ready); its button continues to the next chapter or back home. Everything is also kept on the **Patterns** screen. Themes map to puzzles via `lichess_theme_map` in `config.yaml` (calculation themes such as "3-ply calculation" lead to mate-in-2 puzzles; if the primary theme has no mapping, the secondary theme's is used).
 
 ---
 
@@ -244,8 +244,9 @@ chess-patterns/
 │   ├── review.py         # Review screen: board, move tree, findings (hint → answer)
 │   ├── flow.py           # engine progress screen; import → engine → review → wizard
 │   ├── games.py          # list of imported games
-│   ├── analyze.py        # wizard screen
-│   ├── patterns.py       # patterns dashboard: analysis skill + wizard-entry charts
+│   ├── analyze.py        # wizard screen (ends on a training page for the saved moves)
+│   ├── patterns.py       # patterns dashboard: analysis skill + wizard-entry charts + training
+│   ├── training.py       # training cards (fix, recommendation, puzzle links), shared
 │   └── settings.py       # editable config screen
 ├── core/
 │   ├── analysis_tree.py  # study chapter → moves, variations, otb/swindle tags, evals, arrows, clocks

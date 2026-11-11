@@ -223,17 +223,17 @@ def test_custom_theme_saved_and_added_to_dropdown(game_id, ui_env, tmp_config):
     wiz._primary_var.set("Other…")
     wiz._on_primary_change("Other…")
     wiz._step_var.set(STEP_OPTIONS[0])
-    wiz._primary_other_entry.insert(0, "3-ply")
+    wiz._primary_other_entry.insert(0, "Overloading")
     wiz._on_save()
     pump(ui_env)
     conn = db.get_connection()
-    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "3-ply"
+    assert conn.execute("SELECT primary_theme FROM blunders").fetchone()[0] == "Overloading"
     conn.close()
-    assert "3-ply" in wiz._primary_menu.cget("values")
+    assert "Overloading" in wiz._primary_menu.cget("values")
     assert wiz._primary_menu.cget("values")[-1] == "Other…"
     text = tmp_config.read_text(encoding="utf-8")
     assert "# my settings" in text and "# main ideas" in text and "# plies" in text
-    assert "- 3-ply" in text
+    assert "- Overloading" in text
 
 
 def test_other_theme_with_lichess_puzzle_theme(game_id, ui_env, tmp_config):
@@ -359,3 +359,80 @@ def test_review_without_wizard_starts_no_prefill(game_id, ui_env):
     ReviewScreen(ui_env, gid, on_back=lambda: None).pack(fill="both", expand=True)
     pump(ui_env)
     assert prefetch.get(gid) is None
+
+
+def _texts(widget) -> list:
+    """Every label/button text under ``widget``."""
+    out = []
+    for child in widget.winfo_children():
+        try:
+            out.append(child.cget("text"))
+        except Exception:
+            pass
+        out.extend(_texts(child))
+    return out
+
+
+def _save_first_then_skip_rest(wiz, app):
+    """Save the first queued move as Step 1 / Fork, then skip every other move."""
+    wiz._step_var.set(STEP_OPTIONS[0])
+    wiz._primary_var.set("Fork")
+    wiz._on_save()
+    pump(app)
+    while wiz._index < len(wiz._flagged):
+        wiz._on_skip()
+        pump(app)
+
+
+def test_final_page_shows_training_for_saved_moves(game_id, ui_env, monkeypatch):
+    """After the last move the wizard ends on the saved moves' recommendations and puzzles."""
+    import webbrowser
+    gid, _ = game_id
+    wiz = _wizard(ui_env, gid)
+    _save_first_then_skip_rest(wiz, ui_env)
+    texts = _texts(wiz)
+    assert "All moves reviewed!" in texts and "← Analyse another game" in texts
+    assert any(t.startswith("2.Nf3 · Fork") for t in texts)
+    assert "Fetching puzzles and recommendation…" in texts      # worker still running
+
+    bid = wiz._saved_ids[0]                                      # the worker finishes
+    db.update_blunder(bid, {"puzzle_urls": '["https://lichess.org/training/x"]',
+                            "llm_recommendation": "Look for forks."})
+    wiz._enrich_finished.add(bid)
+    pump(ui_env, until=lambda: wiz.training_links)
+    texts = _texts(wiz)
+    assert "Look for forks." in texts and "Fetching puzzles and recommendation…" not in texts
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    url, link = wiz.training_links[0]
+    link._label.event_generate("<Button-1>")    # CTkLabel binds clicks on its inner label
+    pump(ui_env)
+    assert opened == ["https://lichess.org/training/x"]
+    assert wiz._done_poll_id is None                             # nothing left to wait for
+
+
+def test_final_page_button_runs_on_done(game_id, ui_env):
+    """With on_done (next chapter / games list) the final page waits for its button."""
+    gid, _ = game_id
+    called = []
+    flow.open_wizard(ui_env, gid, "white", build_queue(gid), on_done=lambda: called.append(1),
+                     done_label="Next chapter →")
+    pump(ui_env)
+    wiz = current_screen(ui_env)
+    _save_first_then_skip_rest(wiz, ui_env)
+    assert called == [] and "Next chapter →" in _texts(wiz)
+    wiz._finish()
+    assert called == [1]
+
+
+def test_nothing_saved_skips_final_page(game_id, ui_env):
+    """Skipping every move with on_done set hands over straight away (no training page)."""
+    gid, _ = game_id
+    called = []
+    flow.open_wizard(ui_env, gid, "white", build_queue(gid), on_done=lambda: called.append(1))
+    pump(ui_env)
+    wiz = current_screen(ui_env)
+    while not called:
+        wiz._on_skip()
+        pump(ui_env)
+    assert wiz._saved_ids == []

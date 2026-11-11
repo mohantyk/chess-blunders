@@ -10,7 +10,7 @@ DEFAULTS = {
         "Fork", "Pin", "Skewer", "Back rank", "Mating net", "Discovered attack",
         "Zwischenzug", "Piece activity", "Pawn structure", "King safety",
         "Prophylaxis", "Calculation error", "Endgame technique", "Opening prep gap",
-        "3-ply", "3-ply calculation",
+        "3-ply calculation",
     ],
     "secondary_themes": [
         "None", "Time pressure", "Opening prep gap", "Endgame technique",
@@ -27,7 +27,7 @@ DEFAULTS = {
         "Mating net": "matingNet", "Discovered attack": "discoveredAttack",
         "Zwischenzug": "zwischenzug", "Piece activity": "quietMove",
         "King safety": "kingsideAttack", "Endgame technique": "endgame",
-        "Calculation error": "mateIn2", "3-ply": "mateIn2", "3-ply calculation": "mateIn2",
+        "Calculation error": "mateIn2", "3-ply calculation": "mateIn2",
         "Calculation": "mateIn2", "Hanging Piece": "hangingPiece",
         "Hanging Pawn": "hangingPiece", "Evaluation": "advantage",
     },
@@ -71,6 +71,39 @@ DEFAULTS = {
 }
 
 
+# Old primary-theme names and the theme that replaced them. load_config rewrites
+# them in the theme list and puzzle map; init_db rewrites saved entries.
+THEME_RENAMES = {"3-ply": "3-ply calculation"}
+
+
+def canonical_theme(theme):
+    """Return the current name for ``theme`` (an old merged name maps to its replacement)."""
+    return THEME_RENAMES.get(theme, theme)
+
+
+def _apply_theme_renames(data: dict) -> None:
+    """Replace old theme names in ``primary_themes`` and ``lichess_theme_map`` in place.
+
+    The list keeps its order with duplicates dropped; an old name's puzzle
+    mapping is kept only if the new name has none.
+    """
+    themes = data.get("primary_themes")
+    if isinstance(themes, list):
+        seen, out = set(), []
+        for t in themes:
+            t = canonical_theme(t)
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+        data["primary_themes"] = out
+    tmap = data.get("lichess_theme_map")
+    if isinstance(tmap, dict):
+        for old, new in THEME_RENAMES.items():
+            if old in tmap:
+                angle = tmap.pop(old)
+                tmap.setdefault(new, angle)
+
+
 # Common Lichess puzzle themes offered when a new theme is added through "Other…".
 COMMON_LICHESS_THEMES = [
     "fork", "pin", "skewer", "discoveredAttack", "hangingPiece", "backRankMate",
@@ -100,6 +133,7 @@ def load_config() -> dict:
                 data[k].setdefault(sub_k, sub_v)
         else:
             data.setdefault(k, v)
+    _apply_theme_renames(data)
     return data
 
 
@@ -144,6 +178,7 @@ def save_config(config: dict):
 
 def append_primary_theme(theme: str):
     """Add a new primary theme (from the wizard's "Other…" option) to config.yaml."""
+    theme = canonical_theme(theme)
     cfg = load_config()
     if theme not in cfg["primary_themes"]:
         cfg["primary_themes"].append(theme)

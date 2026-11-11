@@ -233,6 +233,31 @@ def init_db():
         print(f"[db] game {upd['id']}: source_key = {upd['source_key']}")
     conn.commit()
     conn.close()
+    _rename_old_themes()
+
+
+def _rename_old_themes() -> None:
+    """Rewrite saved entries that use a merged theme name (``config.THEME_RENAMES``).
+
+    E.g. "3-ply" becomes "3-ply calculation". Backs up the database first, and
+    only when there is something to change.
+    """
+    from core.config import THEME_RENAMES
+
+    conn = get_connection()
+    marks = ",".join("?" * len(THEME_RENAMES))
+    count = conn.execute(f"SELECT COUNT(*) FROM blunders WHERE primary_theme IN ({marks})",
+                         list(THEME_RENAMES)).fetchone()[0]
+    conn.close()
+    if not count:
+        return
+    backup_db("theme rename: " + ", ".join(f"{o} -> {n}" for o, n in THEME_RENAMES.items()))
+    conn = get_connection()
+    for old, new in THEME_RENAMES.items():
+        conn.execute("UPDATE blunders SET primary_theme = ? WHERE primary_theme = ?", (new, old))
+    conn.commit()
+    conn.close()
+    print(f"[db] renamed old primary themes on {count} entr{'y' if count == 1 else 'ies'}")
 
 
 def _plan_source_key_backfill(conn) -> list:
@@ -354,10 +379,11 @@ def update_blunder(blunder_id, data: dict):
     conn.close()
 
 
-def get_training_entries(limit: int = 20) -> list:
-    """Saved wizard entries for the Patterns "Training" section, most recent first.
+def get_training_entries(limit: int = 20, ids=None) -> list:
+    """Saved wizard entries for the "Training" cards, most recent first.
 
-    Each dict has: id, label (e.g. "12.Nf3" or "12...Nf3"), game ("white - black" or ""),
+    ``ids`` (optional) restricts the result to those blunder ids, e.g. the moves
+    just saved in one wizard run. Each dict has: id, label (e.g. "12.Nf3" or "12...Nf3"), game ("white - black" or ""),
     primary_theme, one_sentence_fix, recommendation (text or None) and puzzle_urls
     (a list, empty when none were found).
     """
@@ -368,10 +394,11 @@ def get_training_entries(limit: int = 20) -> list:
                b.one_sentence_fix, b.llm_recommendation, b.puzzle_urls,
                g.white, g.black
         FROM blunders b LEFT JOIN games g ON g.id = b.game_id
-        WHERE b.step IS NOT NULL AND b.layer IS NOT NULL
+        WHERE b.step IS NOT NULL AND b.layer IS NOT NULL {id_filter}
         ORDER BY b.logged_at DESC, b.id DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """.format(id_filter=f"AND b.id IN ({','.join('?' * len(ids))})" if ids else ""),
+        (*(ids or ()), limit)).fetchall()
     conn.close()
     out = []
     for r in rows:

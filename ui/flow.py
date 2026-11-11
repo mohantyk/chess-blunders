@@ -131,12 +131,18 @@ def open_review(master, game_id: int, on_back: Callable[[], None],
 
 
 def open_wizard(master, game_id: int, user_color: str, queue_items: list,
-                on_done: Optional[Callable[[], None]], context_label: Optional[str] = None) -> None:
-    """Show the wizard for a game's queue; ``on_done`` replaces its final screen if given."""
+                on_done: Optional[Callable[[], None]], context_label: Optional[str] = None,
+                done_label: str = "Continue →") -> None:
+    """Show the wizard for a game's queue.
+
+    It ends on a training page (recommendations and puzzles for the saved moves);
+    if ``on_done`` is given, that page's button (``done_label``) runs it.
+    """
     from ui.analyze import AnalyzeScreen
     _clear(master)
     AnalyzeScreen(master, game_id=game_id, flagged=queue_items, user_color=user_color,
-                  context_label=context_label, on_done=on_done).pack(fill="both", expand=True)
+                  context_label=context_label, on_done=on_done,
+                  done_label=done_label).pack(fill="both", expand=True)
 
 
 def run_chapter_queue(master, queue_items: list, on_home: Callable[[], None]) -> None:
@@ -171,6 +177,7 @@ def run_chapter_queue(master, queue_items: list, on_home: Callable[[], None]) ->
                 return
             open_wizard(master, item["game_id"], item["user_color"], wizard_items,
                         on_done=None if is_last else (lambda: start(i + 1)),
+                        done_label="Next chapter →",
                         context_label=(prefix + item["label"]) if prefix else None)
 
         open_review(master, item["game_id"], on_back=on_home, on_continue=to_wizard,

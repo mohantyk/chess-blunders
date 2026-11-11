@@ -70,7 +70,7 @@ class GamesScreen(ctk.CTkFrame):
             """Classify this game's queued moves, then come back to the list."""
             row = load_game(game_id)
             open_wizard(master, game_id, row["user_color"] or "white", build_queue(game_id),
-                        on_done=back_to_list)
+                        on_done=back_to_list, done_label="← Back to games")
 
         open_review(master, game_id, on_back=back_to_list, on_continue=to_wizard,
                     continue_label=wizard_label)

@@ -72,8 +72,9 @@ ui/home.py              Home: Check for new games, paste PGN, chapter list, nav
 ui/flow.py              engine progress screen; import → engine → review → wizard
 ui/review.py            Review screen
 ui/games.py             Games list
-ui/analyze.py           wizard
-ui/patterns.py          Patterns: Analysis skill + wizard-entry charts
+ui/analyze.py           wizard (ends on a training page for the saved moves)
+ui/patterns.py          Patterns: Analysis skill + wizard-entry charts + Training
+ui/training.py          training cards (fix, recommendation, puzzle links), shared
 ui/settings.py          Settings (themes, prescriptions, theme map, missed-win thresholds)
 core/pgn_parser.py      read_games(), flagged ?/??/$9 moves
 core/analysis_tree.py   F3 analysis tree
@@ -322,7 +323,7 @@ For each queued move: board (from-square green, to-square red), "Move 23 · Blac
 
 **Skip** or **Save → next**. On save: write the row; in the background fetch 3–5 Lichess puzzles for the theme (`/api/puzzle/next?angle=…` via `lichess_theme_map`) and an LLM recommendation; show them when ready. The last saved move's puzzles and recommendation stay in a box under the board (labelled with the move) while the wizard moves on; the worker thread never touches Tk, the UI thread polls for its result.
 
-**Defaults are not choices:** Thinking step and Primary theme start on "— choose —"; engine/AI suggestions fill them, otherwise Save asks for a choice (as it does for "Did you see it?"). **Theme → puzzle:** `lichess_theme_map` maps themes to Lichess puzzle themes (e.g. 3-ply, 3-ply calculation, Calculation error, Calculation → `mateIn2`; Hanging Piece/Pawn → `hangingPiece`; Evaluation → `advantage`). With no mapping for the primary theme, the secondary theme's is used; with none, the results box says so. Adding a theme through "Other…" also offers a Lichess puzzle theme dropdown (default "none"). The **Patterns** screen ends with a **Training** section: the latest 20 entries with move, theme, one-sentence fix, recommendation ("No recommendation yet" if empty) and clickable puzzle links.
+**Defaults are not choices:** Thinking step and Primary theme start on "— choose —"; engine/AI suggestions fill them, otherwise Save asks for a choice (as it does for "Did you see it?"). **Theme → puzzle:** `lichess_theme_map` maps themes to Lichess puzzle themes (e.g. 3-ply calculation, Calculation error, Calculation → `mateIn2`; the old separate "3-ply" theme is merged into "3-ply calculation", in config and in saved entries; Hanging Piece/Pawn → `hangingPiece`; Evaluation → `advantage`). With no mapping for the primary theme, the secondary theme's is used; with none, the results box says so. Adding a theme through "Other…" also offers a Lichess puzzle theme dropdown (default "none"). The wizard ends on a **training page** for the moves saved in that run (same cards; "Fetching…" until each move's puzzles arrive; button = next chapter / back to games / home; skipped if nothing was saved). The **Patterns** screen ends with a **Training** section: the latest 20 entries with move, theme, one-sentence fix, recommendation ("No recommendation yet" if empty) and clickable puzzle links.
 
 | Step | Didn't see it | Saw it, got it wrong |
 |---|---|---|
