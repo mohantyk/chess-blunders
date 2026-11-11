@@ -244,8 +244,9 @@ chess-patterns/
 │   ├── review.py         # Review screen: board, move tree, findings (hint → answer)
 │   ├── flow.py           # engine progress screen; import → engine → review → wizard
 │   ├── games.py          # list of imported games
-│   ├── analyze.py        # wizard screen
-│   ├── patterns.py       # patterns dashboard: analysis skill + wizard-entry charts
+│   ├── analyze.py        # wizard screen (ends on a training page for the saved moves)
+│   ├── patterns.py       # patterns dashboard: analysis skill + wizard-entry charts + training
+│   ├── training.py       # training cards (fix, recommendation, puzzle links), shared
 │   └── settings.py       # editable config screen
 ├── core/
 │   ├── analysis_tree.py  # study chapter → moves, variations, otb/swindle tags, evals, arrows, clocks

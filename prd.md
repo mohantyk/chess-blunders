@@ -72,8 +72,9 @@ ui/home.py              Home: Check for new games, paste PGN, chapter list, nav
 ui/flow.py              engine progress screen; import → engine → review → wizard
 ui/review.py            Review screen
 ui/games.py             Games list
-ui/analyze.py           wizard
-ui/patterns.py          Patterns: Analysis skill + wizard-entry charts
+ui/analyze.py           wizard (ends on a training page for the saved moves)
+ui/patterns.py          Patterns: Analysis skill + wizard-entry charts + Training
+ui/training.py          training cards (fix, recommendation, puzzle links), shared
 ui/settings.py          Settings (themes, prescriptions, theme map, missed-win thresholds)
 core/pgn_parser.py      read_games(), flagged ?/??/$9 moves
 core/analysis_tree.py   F3 analysis tree
