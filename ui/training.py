@@ -1,6 +1,6 @@
 """Training cards: a saved wizard entry's fix, AI recommendation and Lichess puzzle links.
 
-Shared by the Patterns screen's Training section and the wizard's final page.
+Used by the wizard's final page.
 """
 
 from __future__ import annotations

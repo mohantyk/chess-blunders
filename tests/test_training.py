@@ -1,4 +1,4 @@
-"""Training section: the data query and the Patterns screen listing."""
+"""Training entries: the data query behind the wizard's final training page."""
 
 import json
 
@@ -40,36 +40,6 @@ def test_training_entries_newest_first_and_limited(gid):
     assert top["puzzle_urls"] == ["https://lichess.org/training/a"]
     assert top["game"] == "me - them"
     assert got[1]["recommendation"] is None and got[1]["puzzle_urls"] == []
-
-
-def test_patterns_training_section(gid, ui_env, monkeypatch):
-    """The Patterns screen lists entries, shows 'No recommendation yet', and links open in the browser."""
-    pytest.importorskip("customtkinter")
-    import webbrowser
-    from tests.conftest import pump
-    from ui.patterns import PatternsScreen
-    _entry(gid, 7, "black", "Qd8", "Pin", rec="Slow down.", urls=["https://lichess.org/training/a"])
-    _entry(gid, 9, "white", "Bb5", "Skewer")
-    opened = []
-    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
-    screen = PatternsScreen(ui_env, on_back=lambda: None)
-    screen.pack(fill="both", expand=True)
-    pump(ui_env)
-    assert [u for u, _ in screen.training_links] == ["https://lichess.org/training/a"]
-    texts = []
-
-    def walk(w):
-        """Collect every label text under ``w``."""
-        for c in w.winfo_children():
-            try:
-                texts.append(c.cget("text"))
-            except Exception:
-                pass
-            walk(c)
-    walk(screen)
-    assert "No recommendation yet" in texts and "Slow down." in texts
-    screen._open_url(screen.training_links[0][0])     # what a click on the link calls
-    assert opened == ["https://lichess.org/training/a"]
 
 
 def test_training_entries_filtered_by_ids(gid):
