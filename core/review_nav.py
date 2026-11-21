@@ -129,6 +129,25 @@ def considered_moves(nav: "Navigator", finding: dict) -> list:
     return [n.san for n in nav.children(node.parent) if n is node or n.otb]
 
 
+LINE_PLIES = 6   # moves of a finding's engine line shown on its card
+
+
+def finding_line_text(finding: dict) -> str:
+    """The "Line: …" text for a finding's engine line, ending with the engine's eval.
+
+    The eval (e.g. "+1.20 (±)") is the engine's score for that line after best
+    play, so I know how the position stands at its end. Findings saved before
+    the eval was stored show the moves only. Empty when there is no line.
+    """
+    moves = finding.get("pv_san") or []
+    if not moves:
+        return ""
+    text = "Line: " + " ".join(moves[:LINE_PLIES])
+    if finding.get("pv_eval"):
+        text += f" → {finding['pv_eval']}"
+    return text
+
+
 def choice_verdict(finding: dict) -> Optional[str]:
     """"✓ Right: …" / "✗ You picked …" line for an answered chose_worse quiz, else None."""
     pick, best = finding.get("user_answer"), finding.get("best_move_san")

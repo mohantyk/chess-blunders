@@ -90,7 +90,7 @@ def save_review(game_id: int, review: GameReview, engine_id: Optional[str] = Non
             values = dict(
                 run_id=run_id, game_id=game_id, type=f.type, path_san_json=key[1],
                 move_number=f.move_number, side=f.side, fen=f.fen, engine_value=f.engine_value,
-                best_move_san=f.best_move_san, pv_san=json.dumps(f.pv_san),
+                best_move_san=f.best_move_san, pv_san=json.dumps(f.pv_san), pv_eval=f.pv_eval,
                 win_loss=f.win_loss, hint_text=f.hint_text, answer_text=f.answer_text,
                 time_spent_s=f.time_spent_s, clock_remaining_s=f.clock_remaining_s,
                 updated_at=_now(),

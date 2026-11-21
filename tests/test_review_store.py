@@ -66,6 +66,7 @@ def test_save_and_load_round_trip(game_id):
     assert opp["path_san"] == ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"]
     assert opp["best_move_san"] == "g6" and opp["status"] == "open"
     assert "g6" not in opp["hint_text"] and "g6" in opp["answer_text"]
+    assert all(f["pv_eval"] for f in found if f["pv_san"])   # line evals are stored
 
     (dp,) = review_store.load_decision_points(run_id)
     assert dp["played_san"] == "Nf3" and dp["otb_candidates"] == ["Nf3", "Bc4"]

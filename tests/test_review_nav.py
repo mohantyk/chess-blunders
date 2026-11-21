@@ -7,7 +7,8 @@ import chess.pgn
 
 from core.analysis_tree import build_tree
 from core.review_nav import (
-    Navigator, best_move_arrow, figurine, group_findings, move_list_segments,
+    Navigator, best_move_arrow, figurine, finding_line_text, group_findings,
+    move_list_segments,
 )
 
 PGN = """[White "me"]
@@ -161,3 +162,12 @@ def test_considered_moves_and_verdict():
     assert choice_verdict(finding) is None                          # not answered yet
     assert choice_verdict({**finding, "user_answer": "Bc4"}).startswith("✓ Right: Bc4")
     assert choice_verdict({**finding, "user_answer": "Nf3"}) == "✗ You picked Nf3; Bc4 was better."
+
+
+def test_finding_line_text_ends_with_engine_eval():
+    """A finding's engine line is shown (at most 6 moves) with the eval at its end."""
+    f = {"pv_san": ["b4", "Bb6", "b5", "e4", "bxc6", "bxc6", "Nd4"], "pv_eval": "+1.20 (±)"}
+    assert finding_line_text(f) == "Line: b4 Bb6 b5 e4 bxc6 bxc6 → +1.20 (±)"
+    # Findings saved before evals were stored: moves only.
+    assert finding_line_text({"pv_san": ["b4", "Bb6"], "pv_eval": None}) == "Line: b4 Bb6"
+    assert finding_line_text({"pv_san": []}) == ""

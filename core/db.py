@@ -96,6 +96,7 @@ RUNS_NEW_COLUMNS = {
 
 FINDINGS_NEW_COLUMNS = {
     "user_answer": "TEXT",         # my pick on a quiz card (e.g. which candidate was best)
+    "pv_eval": "TEXT",             # engine eval at the end of pv_san, e.g. "+1.20 (±)"
 }
 
 REVIEW_INDEXES = [

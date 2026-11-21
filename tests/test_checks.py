@@ -164,6 +164,7 @@ def test_chose_worse():
     assert worse.best_move_san == "Bc4" and "Bc4" not in worse.hint_text
     assert worse.answer_text.startswith("You considered Bc4, which was better than Nf3")
     assert worse.pv_san[0] == "Bc4" and len(worse.pv_san) == 2   # Bc4 + engine reply
+    assert worse.pv_eval == "+2.00 (±)"   # eval at the end of the Bc4 line, not of Nf3
 
 
 def test_chose_window_tolerates_small_differences():
@@ -376,6 +377,8 @@ def test_review_sample_chapters_with_stub(sample_games):
         assert m["eval_accuracy"][1] == sum(e.verdict in ("match", "close", "wrong")
                                             for e in review.eval_checks)
         assert m["missing_evals"] == len(by_type(review.findings, "missing_eval"))
+        # Every engine line shown on a card ends with the engine's eval.
+        assert all(f.pv_eval for f in review.findings if f.pv_san)
 
 
 def test_positions_needed_covers_every_lookup(sample_games):

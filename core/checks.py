@@ -73,6 +73,17 @@ def format_eval(result: EngineResult) -> str:
     return f"{result.cp_white / 100:+.2f}"
 
 
+def eval_with_band(result: EngineResult, cfg: dict) -> str:
+    """Engine eval plus its band symbol, e.g. "+1.35 (±)".
+
+    Used for the evaluation at the end of a finding's engine line: the score of
+    the engine's best line in ``result``'s position, which is where that line ends
+    up after best play.
+    """
+    band = band_of_cp(result.cp_white, cfg["eval_bands"])
+    return f"{format_eval(result)} ({BAND_SYMBOLS[band]})"
+
+
 def ordinal(n: int) -> str:
     """1 -> "1st", 2 -> "2nd", 11 -> "11th"."""
     suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
@@ -119,6 +130,7 @@ class Finding:
     engine_value: Optional[str] = None   # e.g. "+1.35 (±)"
     best_move_san: Optional[str] = None
     pv_san: list = field(default_factory=list)
+    pv_eval: Optional[str] = None        # engine eval at the end of pv_san, e.g. "+1.20 (±)"
     win_loss: Optional[float] = None
     time_spent_s: Optional[float] = None
     clock_remaining_s: Optional[float] = None
@@ -285,7 +297,7 @@ def check_evals(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
             continue
         result = ev(node.fen_after)
         engine_band = band_of_cp(result.cp_white, edges)
-        engine_text = f"{format_eval(result)} ({BAND_SYMBOLS[engine_band]})"
+        engine_text = eval_with_band(result, cfg)
 
         if node.eval_nag is None:
             if line.ends_in_game_over:
@@ -298,7 +310,7 @@ def check_evals(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
                 answer_text=f"Engine: {engine_text}.",
                 engine_value=engine_text,
                 best_move_san=result.san(result.best.move_uci) if result.best else None,
-                pv_san=result.pv_san(),
+                pv_san=result.pv_san(), pv_eval=engine_text,
             ))
             continue
 
@@ -317,7 +329,7 @@ def check_evals(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
                 answer_text=(f"You said {node.eval_symbol}; the engine says {engine_text}."),
                 user_value=node.eval_symbol, engine_value=engine_text,
                 best_move_san=result.san(result.best.move_uci) if result.best else None,
-                pv_san=result.pv_san(),
+                pv_san=result.pv_san(), pv_eval=engine_text,
             ))
     return checks, findings
 
@@ -360,7 +372,8 @@ def check_decisions(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
             chose_best = cand_wins[dp.played.san] >= cand_wins[best_cand] - cfg["chose_window"]
             if not chose_best:
                 best_node = next(n for n in dp.otb_candidates if n.san == best_cand)
-                cand_pv = [best_cand] + ev(best_node.fen_after).pv_san(max_plies=5)
+                cand_res = ev(best_node.fen_after)
+                cand_pv = [best_cand] + cand_res.pv_san(max_plies=5)
                 findings.append(Finding(
                     type="chose_worse", node=dp.played, fen=dp.fen,
                     hint_text=(f"At move {dp.move_number}, which of the moves you considered "
@@ -370,6 +383,7 @@ def check_decisions(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
                                  f"{cand_wins[dp.played.san]:.0f}% for you)."),
                     user_value=dp.played.san, engine_value=f"{best_cand} better",
                     best_move_san=best_cand, pv_san=cand_pv,
+                    pv_eval=eval_with_band(cand_res, cfg),
                     win_loss=cand_wins[best_cand] - cand_wins[dp.played.san],
                 ))
 
@@ -382,7 +396,7 @@ def check_decisions(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
                 answer_text=(f"You considered {cands}. Engine's best: {best_san} "
                              f"({eval_text})."),
                 user_value=cands, engine_value=eval_text, best_move_san=best_san,
-                pv_san=res.pv_san(),
+                pv_san=res.pv_san(), pv_eval=eval_with_band(res, cfg),
                 win_loss=best_w - ev(dp.played.fen_after).win_for(me),
             ))
 
@@ -431,7 +445,8 @@ def check_lines(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> tuple:
             found = Finding(
                 type=kind, node=node, fen=node.fen_before, hint_text=hint, answer_text=answer,
                 user_value=node.san, engine_value=format_eval(before),
-                best_move_san=best_san, pv_san=before.pv_san(), win_loss=loss,
+                best_move_san=best_san, pv_san=before.pv_san(),
+                pv_eval=eval_with_band(before, cfg), win_loss=loss,
             )
             break
         results.append(LineResult(line, checked=True, break_finding=found))
@@ -467,7 +482,7 @@ def check_blind_spots(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> list:
             answer_text=(f"{node.label} lost {loss:.0f} win% points. Better was {best_san} "
                          f"({format_eval(before)})."),
             user_value=node.san, engine_value=format_eval(before), best_move_san=best_san,
-            pv_san=before.pv_san(), win_loss=loss,
+            pv_san=before.pv_san(), pv_eval=eval_with_band(before, cfg), win_loss=loss,
         ))
     spots.sort(key=lambda f: f.win_loss, reverse=True)
     return spots[: cfg["blind_spot_max"]]
@@ -574,7 +589,8 @@ def check_glyphs(tree: AnalysisTree, ev: Evaluator, cfg: dict) -> list:
                 type="glyph_mismatch", node=node, fen=node.fen_before,
                 hint_text=f"Your {glyph} on {node.label} disagrees with the engine — look again.",
                 answer_text=problem, user_value=glyph, engine_value=format_eval(before),
-                best_move_san=best_san, pv_san=before.pv_san(), win_loss=loss,
+                best_move_san=best_san, pv_san=before.pv_san(),
+                pv_eval=eval_with_band(before, cfg), win_loss=loss,
             ))
     return out
 

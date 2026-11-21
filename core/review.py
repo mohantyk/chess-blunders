@@ -152,7 +152,7 @@ def format_chapter(cr: ChapterReview) -> str:
     for f in holes:
         who = "your move" if f.type == "line_break_own" else "opponent's reply"
         lines.append(f"  {f.label:<12} {who:<17} loses {f.win_loss:.0f} pts · best {f.best_move_san}"
-                     f" · PV {' '.join(f.pv_san)}")
+                     f" · PV {' '.join(f.pv_san)} → {f.pv_eval}")
         lines.append(f"  {'':<12} {f.answer_text}")
 
     lines.append(f"\nBlind spots ({len(rv.blind_spots)})")
