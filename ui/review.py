@@ -11,7 +11,6 @@ Home / End jump to the start / end of the line.
 
 from __future__ import annotations
 
-import urllib.parse
 import webbrowser
 from typing import Callable, Optional
 
@@ -21,9 +20,10 @@ from core import review_store
 from core.board_render import render_position
 from core.checks import BAND_SYMBOLS, compare_bands, fmt_clock, time_use
 from core.config import load_config
+from core.pgn_parser import lichess_url
 from core.review_nav import (
-    EVAL_BANDS, Navigator, best_move_arrow, choice_verdict, considered_moves, group_findings,
-    move_list_segments,
+    EVAL_BANDS, Navigator, best_move_arrow, choice_verdict, considered_moves, finding_line_text,
+    group_findings, move_list_segments,
 )
 from core.run_review import game_tree, load_game
 
@@ -303,8 +303,7 @@ class ReviewScreen(ctk.CTkFrame):
 
     def open_lichess(self) -> None:
         """Open the current position on the Lichess analysis board."""
-        webbrowser.open("https://lichess.org/analysis/" + urllib.parse.quote(self.nav.fen,
-                                                                               safe=""))
+        webbrowser.open(lichess_url(self.nav.fen))
 
     # ------------------------------------------------------------------ drawing
 
@@ -444,8 +443,9 @@ class ReviewScreen(ctk.CTkFrame):
         verdict = choice_verdict(f)
         if verdict:
             text = f"{verdict}\n{text}"
-        if f.get("pv_san"):
-            text += f"\nLine: {' '.join(f['pv_san'][:6])}"
+        line = finding_line_text(f)
+        if line:
+            text += f"\n{line}"
         return text
 
     def goto_finding(self, f: dict) -> None:

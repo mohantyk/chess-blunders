@@ -31,9 +31,16 @@ def read_games(pgn_text: str) -> list:
     return games
 
 
-def _lichess_url(fen: str) -> str:
-    """Return a Lichess analysis-board link for the given FEN."""
-    return f"https://lichess.org/analysis/{urllib.parse.quote(fen, safe='')}"
+def lichess_url(fen: str) -> str:
+    """Return a Lichess analysis-board link that opens exactly the given FEN.
+
+    Lichess reads the FEN from the URL path: the ``/`` between ranks must stay
+    as real slashes and the spaces between FEN fields become ``_``. Encoding
+    the slashes as ``%2F`` makes Lichess ignore the FEN and show the start
+    position.
+    """
+    return "https://lichess.org/analysis/" + urllib.parse.quote(fen.replace(" ", "_"),
+                                                                 safe="/")
 
 
 def _eval_from_comment(comment: str):
@@ -130,7 +137,7 @@ def parse_pgn(pgn_text, user_color: str, missed_win_threshold: int = 150, winnin
             "move_side": side,
             "move_san": move_san,
             "fen": fen_before,
-            "lichess_url": _lichess_url(fen_before),
+            "lichess_url": lichess_url(fen_before),
             "flag_type": flag_type,
             "annotation": clean_comment if clean_comment else None,
             "move_obj": move,  # chess.Move, used for highlight squares

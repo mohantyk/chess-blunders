@@ -25,7 +25,7 @@ from typing import Optional
 from core import db, review_store
 from core.checks import time_use
 from core.config import load_config
-from core.pgn_parser import _lichess_url, parse_pgn
+from core.pgn_parser import lichess_url, parse_pgn
 from core.run_review import game_tree, load_game
 
 QUEUE_TYPES = ("chose_worse", "candidate_miss", "blind_spot")   # precedence order
@@ -117,7 +117,7 @@ def build_queue(game_id: int) -> list:
             "move_side": node.side,
             "move_san": node.san,
             "fen": node.fen_before,
-            "lichess_url": _lichess_url(node.fen_before),
+            "lichess_url": lichess_url(node.fen_before),
             "flag_type": glyph or engine_reasons[0],
             "annotation": node.comment or None,
             "move_obj": node.game_node.move,
