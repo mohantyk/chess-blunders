@@ -22,6 +22,7 @@ From a read-only review of the code, PRD and game 1 (Shrey2019) data. Status in 
 13. Review progress: "N open" counter + jump to next open finding (11 of 17 open in game 1).
 14. Reword "Did you see it?" per step ("Did you see the reply that punished it?") with evidence ("You listed Nf4+ otb").
 15. Training prescription for rushing with time on the clock: none of the current prescriptions fit. Habit drills, not puzzle themes (blunder-check before every move, minimum think time, untimed puzzles stating the full line, clock review of fast flagged moves). [parked 2026-11-10]
+16. Step-by-step rebuild from the missed move: starting at the move where the user missed the idea, build up their own reasoning one move at a time. Details to come from the user. [parked 2026-11-20]
 
 ## Other risks noted
 - A custom primary theme is written to config.yaml even if Save then fails validation.
